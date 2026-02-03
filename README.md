@@ -542,6 +542,18 @@ This repository is based in part on the **Neural Sheaf Diffusion** paper:
    wandb agent sheaf_hypergraphs/PolySheafNeuralNetworks-RailwayPassengers/<SWEEP_ID>
    ```
 
+For mac, instead: 
+```
+docker build --platform linux/amd64 -t hetero-polysd:latest .
+```
+and then: 
+```
+docker run --platform linux/amd64 --rm -it \
+  -v /Users/alessioborgi/Documents/GitHub/Heterogeneous-Polynomial-Sheaf-Diffusion:/work/project \
+  hetero-polysd:latest \
+  /bin/bash
+```
+
 ### Development Dependencies
 
 Install additional development tools:
