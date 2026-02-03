@@ -1,0 +1,29 @@
+name: nsd-mac-arm
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip=21.3.1
+  - pytorch>=2.1.0
+  - torchvision
+  - torchaudio
+  - pip:
+      - torch-householder==1.0.1
+      - tqdm==4.62.3
+      - pytest==6.2.5
+      - wandb==0.23.0
+      - torchdiffeq==0.2.2
+      - networkx==2.6.3
+      - matplotlib==3.9.4
+      - dgl==2.1.0
+# After this, please run the following command in your terminal to create the environment:
+#     conda env create -f environment_mac_arm.yaml
+
+# To activate the environment, enter in your terminal:
+#     conda activate nsd-mac-arm
+
+# You will also need to install additional packages:
+# pip install torch-scatter torch-sparse torch-cluster pandas torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-2.1.0+cpu.html

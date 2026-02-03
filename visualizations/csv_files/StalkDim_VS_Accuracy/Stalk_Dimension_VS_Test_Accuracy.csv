@@ -1,0 +1,14 @@
+Stalk dimension VS Test Accuracy
+;2;3;4;5;;
+DiagChebySD;89.61\pm0.46;89.55\pm0.34;89.67\pm0.34;89.63\pm0.39;PubMed;
+BundleChebySD;89.55\pm0.42;89.54\pm0.38;89.59\pm0.35;89.75\pm0.34;PubMed;
+GeneralChebySD;89.73\pm0.41;89.67\pm0.26;89.58\pm0.36;89.54\pm0.29;PubMed;
+DiagChebySD;88.27\pm1.67;88.47\pm1.19;88.67\pm1.29;88.35\pm0.92;Cora;
+BundleChebySD;88.11\pm1.31;88.27\pm1.12;88.13\pm1.35;88.07\pm1.25;Cora;
+GeneralChebySD;87.87\pm1.49;87.48\pm1.25;87.44\pm1.09;87.77\pm1.80;Cora;
+DiagChebySD;88.68\pm3.12;88.16\pm5.30;88.16\pm4.60;88.68\pm4.86;Texas;
+BundleChebySD;89.74\pm5.32;87.62\pm5.27;88.42\pm4.88;87.63\pm6.97;Texas;
+GeneralChebySD;87.37\pm5.49;88.42\pm5.91;88.42\pm5.16;88.95\pm4.53;Texas;
+DiagChebySD;37.14\pm1.26;37.10\pm0.79;36.97\pm0.84;37.07\pm1.01;Film;
+BundleChebySD;37.37\pm0.96;37.47\pm0.86;36.81\pm1.10;36.84\pm1.21;Film;
+GeneralChebySD;37.10\pm1.01;36.77\pm1.13;37.20\pm0.77;36.90\pm1.10;Film;

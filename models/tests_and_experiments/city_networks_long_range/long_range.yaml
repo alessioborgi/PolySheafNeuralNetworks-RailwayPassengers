@@ -1,0 +1,87 @@
+method: grid
+
+metric:
+  name: R_mean
+  goal: maximize
+
+parameters:
+  # City-Networks naming (paper): paris, shanghai, la, london
+  dataset:
+    values: [la, london]
+
+  # NSD + PolyNSD
+  model:
+    values:
+      - DiagSheaf
+      - BundleSheaf
+      - GeneralSheaf
+      - DiagSheafPolynomial
+      - BundleSheafPolynomial
+      - GeneralSheafPolynomial
+
+  # Seeds
+  base_seed:
+    values: [0]
+
+  # Paper uses a single split; we keep split_seed sweepable for robustness/repeats
+  split_seed:
+    values: [0, 1, 2, 3, 4]
+
+  # Training (paper baseline style: deeper + hidden=64 is common)
+  train:
+    values: [true]
+  epochs:
+    values: [300]
+  early_stopping:
+    values: [50]
+  stop_strategy:
+    values: [acc]
+
+  lr:
+    values: [0.01]
+  weight_decay:
+    values: [0.0005]
+  dropout:
+    values: [0.3]
+
+  layers:
+    values: [16]
+  hidden_channels:
+    values: [64]
+  d:
+    values: [4]
+
+  normalised:
+    values: [true]
+  deg_normalised:
+    values: [false]
+  use_epsilons:
+    values: [true]
+
+  # PolyNSD-only knobs (ignored by NSD models)
+  poly_layers_K:
+    values: [16]
+  polynomial_type:
+    values: [ChebyshevType1]
+  lambda_max_choice:
+    values: [analytic]
+
+  # Total Influence probe (paper defaults)
+  max_hops:
+    values: [16]
+  num_samples:
+    values: [10000]
+  normalize_influence:
+    values: [true]
+  average_influence:
+    values: [true]
+  vectorize:
+    values: [true]
+
+command:
+  - ${env}
+  - python
+  - models/tests_and_experiments/city_networks_long_range/long_range_benchmark.py
+  - --wandb_agent
+  - --device
+  - cuda:1

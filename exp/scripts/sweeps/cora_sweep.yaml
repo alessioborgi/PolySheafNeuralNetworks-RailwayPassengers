@@ -1,0 +1,203 @@
+name: cora
+program: exp/run.py
+method: random
+
+metric:
+  name: val_acc
+  goal: maximize
+
+parameters:
+  dataset:
+    value: cora
+  model:
+    value: GeneralSheafPolynomial     # Possible values:: [DiagSheaf, BundleSheaf, GeneralSheaf,
+                                      #                    DiagSheafPolynomial, BundleSheafPolynomial, GeneralSheafPolynomial,
+                                      #                    DiagSheafODE, BundleSheafODE, GeneralSheafODE,
+                                      #                    DiagSheafODEPolynomial, BundleSheafODEPolynomial, GeneralSheafODEPolynomial]
+  
+
+
+  ########## PARAMTERS ONLY USED BY (SOME) POLYNOMIAL MODELS #######################################################
+  polynomial_type:                    
+    value: Jacobi             # Possible values: [ChebyshevType1, ChebyshevType2, ChebyshevType3, 
+                                      #                    ChebyshevType4, ChebyshevInterpolation, Legendre, Gegenbauer, Jacobi]
+  lambda_max_choice:
+    value: analytic   # Possible values: ["iterative", "analytic"]
+    # distribution: categorical
+    # values: ["iterative", "analytic"]
+  poly_layers_K:                      # Filter degree
+    distribution: categorical
+    values: [2, 3, 4, 5, 8, 12, 16]
+  # gegenbauer_lambda:                  # Must be >0 .
+  #   distribution: categorical
+  #   values: [0.5, 1.0, 1.5]
+  jacobi_alpha:                       # Must be >-1 .
+    distribution: categorical
+    values: [-0.5, 0.0, 0.5, 1.0]
+  jacobi_beta:                        # Must be >-1 .
+    distribution: categorical
+    values: [-0.5, 0.0, 0.5, 1.0]
+  #################################################################################################################
+  
+  d:
+    distribution: categorical
+    values: [2, 3, 4, 5]
+  layers:
+    distribution: categorical
+    values: [2, 3, 4, 5, 6, 7, 8, 16, 32, 64]
+  hidden_channels:
+    distribution: categorical
+    values: [8, 16, 32]
+  input_dropout:
+    distribution: categorical
+    values: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  dropout:
+    distribution: categorical
+    values: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  weight_decay:
+    distribution: log_uniform
+    min: -9.2
+    max: -6.8
+  sheaf_decay:
+    distribution: log_uniform
+    min: -11.0
+    max: -6.8
+  add_lp:
+    distribution: categorical
+    values: [1, 0]
+  add_hp:
+    distribution: categorical
+    values: [1, 0]
+  
+  
+  # required by your parser / asserts
+  lr:
+    value: 0.01
+  left_weights:
+    value: True
+  right_weights:
+    value: True
+  normalised:
+    value: True
+  use_act:
+    value: True
+  edge_weights:
+    value: True
+  deg_normalised:
+    value: False
+  sparse_learner:
+    value: False
+  early_stopping:
+    distribution: constant
+    value: 200
+  folds:
+    distribution: constant
+    value: 10
+  epochs:
+    distribution: constant
+    value: 500
+  second_linear:
+    value: False
+  orth:
+    distribution: constant
+    value: "householder"
+  entity:
+    value: adavit   
+  cuda:
+    value: 1
+
+command:
+  - ${env}
+  - python
+  - -u
+  - ${program}
+  - ${args}
+
+
+
+
+
+################### CHEBYSHEV POLYNOMIAL ORDER (K) VS TEST ACCURACY #####################
+# name: cora
+# program: exp/run.py
+# method: grid
+
+# metric:
+#   name: val_acc
+#   goal: maximize
+
+# parameters:
+#   dataset:
+#     value: cora
+#   model:
+#     value: GeneralSheafChebyshev
+#   d:
+#     distribution: categorical
+#     values: [4]
+#   layers:
+#     distribution: categorical
+#     values: [2]
+#   hidden_channels:
+#     distribution: categorical
+#     values: [32]
+#   input_dropout:
+#     distribution: categorical
+#     values: [0.2]
+#   dropout:
+#     distribution: categorical
+#     values: [0.2]
+#   add_lp:
+#     distribution: categorical
+#     values: [1]
+#   add_hp:
+#     distribution: categorical
+#     values: [1]
+#   lambda_max_choice:
+#     distribution: categorical
+#     values: ["iterative", "analytic"]
+#   chebyshev_layers_K:
+#     values: [1, 2, 4, 8, 12, 16]
+  
+  
+#   # required by your parser / asserts
+#   lr:
+#     value: 0.01
+#   left_weights:
+#     value: True
+#   right_weights:
+#     value: True
+#   normalised:
+#     value: True
+#   use_act:
+#     value: True
+#   edge_weights:
+#     value: True
+#   deg_normalised:
+#     value: False
+#   sparse_learner:
+#     value: False
+#   early_stopping:
+#     distribution: constant
+#     value: 200
+#   folds:
+#     distribution: constant
+#     value: 10
+#   epochs:
+#     distribution: constant
+#     value: 500
+#   second_linear:
+#     value: False
+#   orth:
+#     distribution: constant
+#     value: "householder"
+#   entity:
+#     value: adavit   
+#   cuda:
+#     value: 1
+
+# command:
+#   - ${env}
+#   - python
+#   - -u
+#   - ${program}
+#   - ${args}

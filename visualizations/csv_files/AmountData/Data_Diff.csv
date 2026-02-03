@@ -1,0 +1,55 @@
+Data_RiSNN,num_feats,feat_noise,edge-noise,num_nodes,degree,num_edges,num_classes,het,model,results,Test acc,std,Val acc
+Data_RiSNN1002,3,0,0,100,2,100,3,0.9,MLP,Test acc: 47.0000 +/- 10.2956 | Val acc: 45.0000,47.0000, 10.295,45.0000
+Data_RiSNN1002,3,0,0,100,2,100,3,0.9,VanillaSheaf,Test acc: 32.0000 +/- 11.2250 | Val acc: 38.0000,32.0000, 11.225,38.0000
+Data_RiSNN1002,3,0,0,100,2,100,3,0.9,DiagSheaf,Test acc: 42.5000 +/- 12.0934 | Val acc: 44.5000,42.5000, 12.093,44.5000
+Data_RiSNN1002,3,0,0,100,2,100,3,0.9,JointSheaf NoInit,Test acc: 41.0000 +/- 8.8882 | Val acc: 40.0000,41.0000, 8.8882,40.0000
+Data_RiSNN1002,3,0,0,100,2,100,3,0.9,JointSheaf Init,Test acc: 44.5000 +/- 12.5399 | Val acc: 56.5000,44.5000, 12.539,56.5000
+Data_RiSNN1002,3,0,0,100,2,100,3,0.9,JointSheaf Params,Test acc: 51.5000 +/- 10.5000 | Val acc: 56.0000,51.5000, 10.500,56.0000
+Data_RiSNN1006,3,0,0,100,6,300,3,0.9,MLP,Test acc: 42.0000 +/- 14.5258 | Val acc: 46.0000,42.0000, 14.525,46.0000
+Data_RiSNN1006,3,0,0,100,6,300,3,0.9,VanillaSheaf,Test acc: 30.0000 +/- 8.6603 | Val acc: 32.5000,30.0000, 8.6603,32.5000
+Data_RiSNN1006,3,0,0,100,6,300,3,0.9,DiagSheaf,Test acc: 49.0000 +/- 10.4403 | Val acc: 53.5000,49.0000, 10.440,53.5000
+Data_RiSNN1006,3,0,0,100,6,300,3,0.9,JointSheaf NoInit,Test acc: 35.5000 +/- 12.5399 | Val acc: 38.0000,35.5000, 12.539,38.0000
+Data_RiSNN1006,3,0,0,100,6,300,3,0.9,JointSheaf Init,Test acc: 60.5000 +/- 14.7394 | Val acc: 56.5000,60.5000, 14.739,56.5000
+Data_RiSNN1006,3,0,0,100,6,300,3,0.9,JointSheaf Params,Test acc: 59.0000 +/- 10.6771 | Val acc: 63.0000,59.0000, 10.677,63.0000
+Data_RiSNN10010,3,0,0,100,10,500,3,0.9,MLP,Test acc: 42.0000 +/- 14.5258 | Val acc: 46.0000,42.0000, 14.525,46.0000
+Data_RiSNN10010,3,0,0,100,10,500,3,0.9,VanillaSheaf,Test acc: 31.5000 +/- 7.7621 | Val acc: 39.0000,31.5000, 7.7621,39.0000
+Data_RiSNN10010,3,0,0,100,10,500,3,0.9,DiagSheaf,Test acc: 55.0000 +/- 13.6015 | Val acc: 64.5000,55.0000, 13.601,64.5000
+Data_RiSNN10010,3,0,0,100,10,500,3,0.9,JointSheaf NoInit,Test acc: 53.5000 +/- 12.4599 | Val acc: 51.0000,53.5000, 12.459,51.0000
+Data_RiSNN10010,3,0,0,100,10,500,3,0.9,JointSheaf Init,Test acc: 60.0000 +/- 18.9737 | Val acc: 67.5000,60.0000, 18.973,67.5000
+Data_RiSNN10010,3,0,0,100,10,500,3,0.9,JointSheaf Params,Test acc: 60.5000 +/- 12.5399 | Val acc: 62.5000,60.5000, 12.539,62.5000
+Data_RiSNN5002,3,0,0,500,2,500,3,0.9,MLP,Test acc: 44.7000 +/- 4.0755 | Val acc: 41.3000,44.7000, 4.0755,41.3000
+Data_RiSNN5002,3,0,0,500,2,500,3,0.9,VanillaSheaf,Test acc: 35.0000 +/- 4.2190 | Val acc: 35.4000,35.0000, 4.2190,35.4000
+Data_RiSNN5002,3,0,0,500,2,500,3,0.9,DiagSheaf,Test acc: 48.5000 +/- 6.5154 | Val acc: 52.2000,48.5000, 6.5154,52.2000
+Data_RiSNN5002,3,0,0,500,2,500,3,0.9,JointSheaf NoInit,Test acc: 40.7000 +/- 4.8590 | Val acc: 43.5000,40.7000, 4.8590,43.5000
+Data_RiSNN5002,3,0,0,500,2,500,3,0.9,JointSheaf Init,Test acc: 61.4000 +/- 6.9599 | Val acc: 59.1000,61.4000, 6.9599,59.1000
+Data_RiSNN5002,3,0,0,500,2,500,3,0.9,JointSheaf Params,Test acc: 58.2000 +/- 7.6000 | Val acc: 59.6000,58.2000, 7.6000,59.6000
+Data_RiSNN5006,3,0,0,500,6,1500,3,0.9,MLP,Test acc: 44.6000 +/- 3.4699 | Val acc: 41.3000,44.6000, 3.4699,41.3000
+Data_RiSNN5006,3,0,0,500,6,1500,3,0.9,VanillaSheaf,Test acc: 32.7000 +/- 3.8743 | Val acc: 33.3000,32.7000, 3.8743,33.3000
+Data_RiSNN5006,3,0,0,500,6,1500,3,0.9,DiagSheaf,Test acc: 63.0000 +/- 4.2661 | Val acc: 63.8000,63.0000, 4.2661,63.8000
+Data_RiSNN5006,3,0,0,500,6,1500,3,0.9,JointSheaf NoInit,Test acc: 42.3000 +/- 12.6495 | Val acc: 43.5000,42.3000, 12.649,43.5000
+Data_RiSNN5006,3,0,0,500,6,1500,3,0.9,JointSheaf Init,Test acc: 68.6000 +/- 3.7736 | Val acc: 70.7000,68.6000, 3.7736,70.7000
+Data_RiSNN5006,3,0,0,500,6,1500,3,0.9,JointSheaf Params,Test acc: 66.4000 +/- 8.5229 | Val acc: 67.0000,66.4000, 8.5229,67.0000
+Data_RiSNN50010,3,0,0,500,10,2500,3,0.9,MLP,Test acc: 44.6000 +/- 3.4699 | Val acc: 41.3000,44.6000, 3.4699,41.3000
+Data_RiSNN50010,3,0,0,500,10,2500,3,0.9,VanillaSheaf,Test acc: 35.8000 +/- 2.7495 | Val acc: 37.1000,35.8000, 2.7495,37.1000
+Data_RiSNN50010,3,0,0,500,10,2500,3,0.9,DiagSheaf,Test acc: 67.1000 +/- 6.4413 | Val acc: 66.9000,67.1000, 6.4413,66.9000
+Data_RiSNN50010,3,0,0,500,10,2500,3,0.9,JointSheaf NoInit,Test acc: 45.8000 +/- 14.9720 | Val acc: 44.5000,45.8000, 14.972,44.5000
+Data_RiSNN50010,3,0,0,500,10,2500,3,0.9,JointSheaf Init,Test acc: 69.1000 +/- 4.2059 | Val acc: 66.9000,69.1000, 4.2059,66.9000
+Data_RiSNN50010,3,0,0,500,10,2500,3,0.9,JointSheaf Params,Test acc: 70.3000 +/- 7.2395 | Val acc: 70.6000,70.3000, 7.2395,70.6000
+Data_RiSNN10002,3,0,0,1000,2,1000,3,0.9,MLP,Test acc: 42.0000 +/- 1.7889 | Val acc: 43.6000,42.0000, 1.7889,43.6000
+Data_RiSNN10002,3,0,0,1000,2,1000,3,0.9,VanillaSheaf,Test acc: 35.7500 +/- 2.3585 | Val acc: 37.1500,35.7500, 2.3585,37.1500
+Data_RiSNN10002,3,0,0,1000,2,1000,3,0.9,DiagSheaf,Test acc: 48.9500 +/- 4.6176 | Val acc: 48.2000,48.9500, 4.6176,48.2000
+Data_RiSNN10002,3,0,0,1000,2,1000,3,0.9,JointSheaf NoInit,Test acc: 41.7000 +/- 4.1485 | Val acc: 43.0500,41.7000, 4.1485,43.0500
+Data_RiSNN10002,3,0,0,1000,2,1000,3,0.9,JointSheaf Init,Test acc: 62.4500 +/- 7.1953 | Val acc: 63.9000,62.4500, 7.1953,63.9000
+Data_RiSNN10002,3,0,0,1000,2,1000,3,0.9,JointSheaf Params,Test acc: 62.8500 +/- 7.5002 | Val acc: 65.0500,62.8500, 7.5002,65.0500
+Data_RiSNN10006,3,0,0,1000,6,3000,3,0.9,MLP,Test acc: 42.2500 +/- 2.6763 | Val acc: 43.6500,42.2500, 2.6763,43.6500
+Data_RiSNN10006,3,0,0,1000,6,3000,3,0.9,VanillaSheaf,Test acc: 31.7000 +/- 3.0594 | Val acc: 35.7500,31.7000, 3.0594,35.7500
+Data_RiSNN10006,3,0,0,1000,6,3000,3,0.9,DiagSheaf,Test acc: 65.5000 +/- 3.2016 | Val acc: 65.9000,65.5000, 3.2016,65.9000
+Data_RiSNN10006,3,0,0,1000,6,3000,3,0.9,JointSheaf NoInit,Test acc: 42.8500 +/- 8.4055 | Val acc: 45.3500,42.8500, 8.4055,45.3500
+Data_RiSNN10006,3,0,0,1000,6,3000,3,0.9,JointSheaf Init,Test acc: 68.3000 +/- 7.8556 | Val acc: 68.3000,68.3000, 7.8556,68.3000
+Data_RiSNN10006,3,0,0,1000,6,3000,3,0.9,JointSheaf Params,Test acc: 63.9000 +/- 4.4147 | Val acc: 65.2000,63.9000, 4.4147,65.2000
+Data_RiSNN100010,3,0,0,1000,10,5000,3,0.9,MLP,Test acc: 42.2500 +/- 2.6763 | Val acc: 43.6500,42.2500, 2.6763,43.6500
+Data_RiSNN100010,3,0,0,1000,10,5000,3,0.9,VanillaSheaf,Test acc: 35.7500 +/- 3.7299 | Val acc: 37.4500,35.7500, 3.7299,37.4500
+Data_RiSNN100010,3,0,0,1000,10,5000,3,0.9,DiagSheaf,Test acc: 68.7000 +/- 2.5417 | Val acc: 69.9000,68.7000, 2.5417,69.9000
+Data_RiSNN100010,3,0,0,1000,10,5000,3,0.9,JointSheaf NoInit,Test acc: 42.9500 +/- 10.1105 | Val acc: 43.1000,42.9500, 10.110,43.1000
+Data_RiSNN100010,3,0,0,1000,10,5000,3,0.9,JointSheaf Init,Test acc: 74.7000 +/- 5.0902 | Val acc: 75.9000,74.7000, 5.0902,75.9000
+Data_RiSNN100010,3,0,0,1000,10,5000,3,0.9,JointSheaf Params,Test acc: 66.2000 +/- 6.9181 | Val acc: 69.8000,66.2000, 6.9181,69.8000

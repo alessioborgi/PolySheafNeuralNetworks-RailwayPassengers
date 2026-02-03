@@ -1,0 +1,209 @@
+
+################# HETEROPHILY FIGURE Diff(1.a) ##################
+
+program: exp/run.py
+project: ChebyshevSheafsSynthetic_HeterophilyDiff
+entity: adavit
+method: grid
+
+
+parameters:
+  dataset:        {value: synthetic_exp}
+  #model:          {values: [DiagSheafChebyshev, BundleSheafChebyshev, GeneralSheafChebyshev]}
+  model:          {values: [DiagSheaf, BundleSheaf, GeneralSheaf]}
+  num_classes:    {values: [2,3,4,5]}
+  num_feats:      {value: 4}     
+  num_nodes:      {values: [400, 600, 800, 1000]}
+  node_degree:    {value: 4}
+  ellipsoids:     {value: false}
+  edge_noise:     {value: 0.0}
+  feat_noise:     {value: 0.0}
+  het_coef:       {values: [0.0,0.25,0.50,0.75,1.0]}
+  epochs:         {value: 1500}
+  early_stopping: {value: 200}
+  lr:             {value: 0.01}
+  weight_decay:   {value: 0.0005}
+  sheaf_decay:    {value: 0.0005}
+  seed:           {value: 43}
+  cuda:           {value: 1}
+
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - ${args}
+
+
+
+################# HETEROPHILY FIGURE RiSNN(1.b) ##################
+
+# program: exp/run.py
+# project: ChebyshevSheafsSynthetic_HeterophilyRiSNN
+# entity: adavit
+# method: grid
+
+
+# parameters:
+#   dataset:        {value: synthetic_exp}
+#   model:          {values: [DiagSheafChebyshev, BundleSheafChebyshev, GeneralSheafChebyshev]}
+#   num_classes:    {values: [2,3,4,5]}
+#   num_feats:      {value: 15}     
+#   num_nodes:      {values: [400, 600, 800, 1000]}
+#   node_degree:    {value: 4}
+#   ellipsoids:     {value: false}
+#   edge_noise:     {value: 0.0}
+#   feat_noise:     {value: 0.0}
+#   het_coef:       {values: [0.0,0.25,0.50,0.75,1.0]}
+#   epochs:         {value: 1500}
+#   early_stopping: {value: 200}
+#   lr:             {value: 0.01}
+#   weight_decay:   {value: 0.0005}
+#   sheaf_decay:    {value: 0.0005}
+#   seed:           {value: 43}
+#   cuda:           {value: 1}
+
+
+# command:
+#   - ${env}
+#   - python
+#   - ${program}
+#   - ${args}
+
+
+# ################# FEATURE NOISE FIGURE Diff (2.a) ##################
+# program: exp/run.py
+# project: ChebyshevSheafsSynthetic_FeatureNoiseDiff
+# entity: adavit
+# method: grid
+
+
+# parameters:
+#   dataset:        {value: synthetic_exp}
+#   model:          {values: [DiagSheafChebyshev, BundleSheafChebyshev, GeneralSheafChebyshev]}
+#   num_classes:    {value: 2}
+#   num_feats:      {value: 3}
+#   num_nodes:      {value: 400}
+#   node_degree:    {value: 2}
+#   ellipsoids:     {value: false}
+#   edge_noise:     {value: 0.0}
+#   feat_noise:     {values: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]}
+#   het_coef:       {value: 1.0}
+#   epochs:         {value: 1500}
+#   early_stopping: {value: 200}
+#   lr:             {value: 0.01}
+#   weight_decay:   {value: 0.0005}
+#   sheaf_decay:    {value: 0.0005}
+#   seed:           {value: 43}
+#   cuda:           {value: 1}
+
+# command:
+#   - ${env}
+#   - python
+#   - ${program}
+#   - ${args}
+
+
+
+# ################# FEATURE NOISE FIGURE RiSNN (2.b) ##################
+# program: exp/run.py
+# project: ChebyshevSheafsSynthetic_FeatureNoiseRiSNN
+# entity: adavit
+# method: grid
+
+
+# parameters:
+#   dataset:        {value: synthetic_exp}
+#   model:          {values: [DiagSheafChebyshev, BundleSheafChebyshev, GeneralSheafChebyshev]}
+#   num_classes:    {value: 2}
+#   num_feats:      {value: 15}
+#   num_nodes:      {value: 500}
+#   node_degree:    {value: 5}
+#   ellipsoids:     {value: false}
+#   edge_noise:     {value: 0.0}
+#   feat_noise:     {values: [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.30]}
+#   het_coef:       {value: 1.0}
+#   epochs:         {value: 1500}
+#   early_stopping: {value: 200}
+#   lr:             {value: 0.01}
+#   weight_decay:   {value: 0.0005}
+#   sheaf_decay:    {value: 0.0005}
+#   seed:           {value: 43}
+#   cuda:           {value: 1}
+
+
+# command:
+#   - ${env}
+#   - python
+#   - ${program}
+#   - ${args}
+
+
+
+# ################# AMOUNT OF DATA FIGURE Diff(3.a) ##################
+# program: exp/run.py
+# project: ChebyshevSheafsSynthetic_AmountOfDataDiff
+# entity: adavit
+# method: grid
+
+
+# parameters:
+#   dataset:        {value: synthetic_exp}
+#   model:          {values: [DiagSheafChebyshev, BundleSheafChebyshev, GeneralSheafChebyshev]}
+#   num_classes:    {value: 3}
+#   num_feats:      {value: 3}
+#   num_nodes:      {values: [100, 500, 1000]}
+#   node_degree:    {values: [2, 6, 10]}
+#   ellipsoids:     {value: false}
+#   edge_noise:     {value: 0.0}
+#   feat_noise:     {value: 0.0}
+#   het_coef:       {value: 0.9}
+#   epochs:         {value: 1500}
+#   early_stopping: {value: 200}
+#   lr:             {value: 0.01}
+#   weight_decay:   {value: 0.0005}
+#   sheaf_decay:    {value: 0.0005}
+#   seed:           {value: 43}
+#   cuda:           {value: 1}
+
+
+# command:
+#   - ${env}
+#   - python
+#   - ${program}
+#   - ${args}
+
+
+
+# ################## AMOUNT OF DATA FIGURE RiSNN(3.b) ##################
+# program: exp/run.py
+# project: ChebyshevSheafsSynthetic_AmountOfDataRiSNN
+# entity: adavit
+# method: grid
+
+
+# parameters:
+#   dataset:        {value: synthetic_exp}
+#   model:          {values: [DiagSheafChebyshev, BundleSheafChebyshev, GeneralSheafChebyshev]}
+#   num_classes:    {value: 3}
+#   num_feats:      {value: 15}
+#   num_nodes:      {values: [100, 500, 1000]}
+#   node_degree:    {values: [2, 6, 10]}
+#   ellipsoids:     {value: false}
+#   edge_noise:     {value: 0.0}
+#   feat_noise:     {value: 0.0}
+#   het_coef:       {value: 0.9}
+#   epochs:         {value: 1500}
+#   early_stopping: {value: 200}
+#   lr:             {value: 0.01}
+#   weight_decay:   {value: 0.0005}
+#   sheaf_decay:    {value: 0.0005}
+#   seed:           {value: 43}
+#   cuda:           {value: 1}
+
+
+# command:
+#   - ${env}
+#   - python
+#   - ${program}
+#   - ${args}

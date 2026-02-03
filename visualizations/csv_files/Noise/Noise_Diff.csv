@@ -1,0 +1,67 @@
+data,num_feats,feat_noise,edge-noise,num_nodes,degree,num_edges,num_classes,het,model,results,test_acc,std,Val acc
+raw00_Diff,3,0,0,400,2,400,2,1,MLP,Test acc: 61.0000 +/- 6.5144 | Val acc: 63.8750,61.0000, 6.5144,63.8750
+raw00_Diff,3,0,0,400,2,400,2,1,VanillaSheaf,Test acc: 46.2500 +/- 5.8095 | Val acc: 51.1250,46.2500, 5.8095,51.1250
+raw00_Diff,3,0,0,400,2,400,2,1,DiagSheaf,Test acc: 90.5000 +/- 2.5739 | Val acc: 92.7500,90.5000, 2.5739,92.7500
+raw00_Diff,3,0,0,400,2,400,2,1,JointSheaf NoInit,Test acc: 62.0000 +/- 10.9001 | Val acc: 62.2500,62.0000, 10.900,62.2500
+raw00_Diff,3,0,0,400,2,400,2,1,JointSheaf Init,Test acc: 93.6250 +/- 5.5748 | Val acc: 95.0000,93.6250, 5.5748,95.0000
+raw00_Diff,3,0,0,400,2,400,2,1,JointSheaf Params,Test acc: 93.7500 +/- 3.1623 | Val acc: 93.7500,93.7500, 3.1623,93.7500
+raw01_Diff,3,0,0.2,400,2,400,2,1,MLP,Test acc: 61.0000 +/- 6.5144 | Val acc: 63.8750,61.0000, 6.5144,63.8750
+raw01_Diff,3,0,0.2,400,2,400,2,1,VanillaSheaf,Test acc: 45.8750 +/- 3.3564 | Val acc: 52.3750,45.8750, 3.3564,52.3750
+raw01_Diff,3,0,0.2,400,2,400,2,1,DiagSheaf,Test acc: 86.8750 +/- 3.7604 | Val acc: 87.7500,86.8750, 3.7604,87.7500
+raw01_Diff,3,0,0.2,400,2,400,2,1,JointSheaf NoInit,Test acc: 59.7500 +/- 10.8224 | Val acc: 61.2500,59.7500, 10.822,61.2500
+raw01_Diff,3,0,0.2,400,2,400,2,1,JointSheaf Init,Test acc: 90.6250 +/- 5.2515 | Val acc: 91.7500,90.6250, 5.2515,91.7500
+raw01_Diff,3,0,0.2,400,2,400,2,1,JointSheaf Params,Test acc: 89.0000 +/- 3.5267 | Val acc: 94.5000,89.0000, 3.5267,94.5000
+raw02_Diff,3,0,0.4,400,2,400,2,1,MLP,Test acc: 61.0000 +/- 6.5144 | Val acc: 63.8750,61.0000, 6.5144,63.8750
+raw02_Diff,3,0,0.4,400,2,400,2,1,VanillaSheaf,Test acc: 46.3750 +/- 4.3463 | Val acc: 54.7500,46.3750, 4.3463,54.7500
+raw02_Diff,3,0,0.4,400,2,400,2,1,DiagSheaf,Test acc: 78.7500 +/- 4.7434 | Val acc: 80.0000,78.7500, 4.7434,80.0000
+raw02_Diff,3,0,0.4,400,2,400,2,1,JointSheaf NoInit,Test acc: 56.8750 +/- 8.6286 | Val acc: 59.5000,56.8750, 8.6286,59.5000
+raw02_Diff,3,0,0.4,400,2,400,2,1,JointSheaf Init,Test acc: 90.8750 +/- 3.2620 | Val acc: 92.7500,90.8750, 3.2620,92.7500
+raw02_Diff,3,0,0.4,400,2,400,2,1,JointSheaf Params,Test acc: 87.8750 +/- 3.6679 | Val acc: 90.6250,87.8750, 3.6679,90.6250
+raw03_Diff,3,0,0.6,400,2,400,2,1,MLP,Test acc: 61.0000 +/- 6.5144 | Val acc: 63.8750,61.0000, 6.5144,63.8750
+raw03_Diff,3,0,0.6,400,2,400,2,1,VanillaSheaf,Test acc: 48.5000 +/- 3.9843 | Val acc: 51.0000,48.5000, 3.9843,51.0000
+raw03_Diff,3,0,0.6,400,2,400,2,1,DiagSheaf,Test acc: 73.3750 +/- 3.3564 | Val acc: 75.1250,73.3750, 3.3564,75.1250
+raw03_Diff,3,0,0.6,400,2,400,2,1,JointSheaf NoInit,Test acc: 60.7500 +/- 7.4204 | Val acc: 64.3750,60.7500, 7.4204,64.3750
+raw03_Diff,3,0,0.6,400,2,400,2,1,JointSheaf Init,Test acc: 84.3750 +/- 8.1442 | Val acc: 90.1250,84.3750, 8.1442,90.1250
+raw03_Diff,3,0,0.6,400,2,400,2,1,JointSheaf Params,Test acc: 89.8750 +/- 3.2811 | Val acc: 90.2500,89.8750, 3.2811,90.2500
+raw04_Diff,3,0,0.8,400,2,400,2,1,MLP,Test acc: 61.0000 +/- 6.5144 | Val acc: 63.8750,61.0000, 6.5144,63.8750
+raw04_Diff,3,0,0.8,400,2,400,2,1,VanillaSheaf,Test acc: 50.7500 +/- 7.2284 | Val acc: 53.3750,50.7500, 7.2284,53.3750
+raw04_Diff,3,0,0.8,400,2,400,2,1,DiagSheaf,Test acc: 72.2500 +/- 5.5000 | Val acc: 73.5000,72.2500, 5.5000,73.5000
+raw04_Diff,3,0,0.8,400,2,400,2,1,JointSheaf NoInit,Test acc: 68.6250 +/- 10.3900 | Val acc: 71.2500,68.6250, 10.390,71.2500
+raw04_Diff,3,0,0.8,400,2,400,2,1,JointSheaf Init,Test acc: 86.8750 +/- 6.7373 | Val acc: 84.5000,86.8750, 6.7373,84.5000
+raw04_Diff,3,0,0.8,400,2,400,2,1,JointSheaf Params,Test acc: 89.0000 +/- 2.7272 | Val acc: 90.7500,89.0000, 2.7272,90.7500
+raw05_Diff,3,0,1,400,2,400,2,1,MLP,Test acc: 61.0000 +/- 6.5144 | Val acc: 63.8750,61.0000, 6.5144,63.8750
+raw05_Diff,3,0,1,400,2,400,2,1,VanillaSheaf,Test acc: 55.2500 +/- 3.8649 | Val acc: 59.3750,55.2500, 3.8649,59.3750
+raw05_Diff,3,0,1,400,2,400,2,1,DiagSheaf,Test acc: 76.0000 +/- 4.7368 | Val acc: 74.8750,76.0000, 4.7368,74.8750
+raw05_Diff,3,0,1,400,2,400,2,1,JointSheaf NoInit,Test acc: 74.8750 +/- 9.2272 | Val acc: 73.8750,74.8750, 9.2272,73.8750
+raw05_Diff,3,0,1,400,2,400,2,1,JointSheaf Init,Test acc: 82.8750 +/- 6.0994 | Val acc: 81.7500,82.8750, 6.0994,81.7500
+raw05_Diff,3,0,1,400,2,400,2,1,JointSheaf Params,Test acc: 85.7500 +/- 6.3048 | Val acc: 89.7500,85.7500, 6.3048,89.7500
+raw10_Diff,3,0.2,0,400,2,400,2,1,MLP,Test acc: 59.7500 +/- 5.3561 | Val acc: 60.5000,59.7500, 5.3561,60.5000
+raw10_Diff,3,0.2,0,400,2,400,2,1,VanillaSheaf,Test acc: 45.2500 +/- 5.3852 | Val acc: 50.5000,45.2500, 5.3852,50.5000
+raw10_Diff,3,0.2,0,400,2,400,2,1,DiagSheaf,Test acc: 82.7500 +/- 3.9051 | Val acc: 86.0000,82.7500, 3.9051,86.0000
+raw10_Diff,3,0.2,0,400,2,400,2,1,JointSheaf NoInit,Test acc: 54.1250 +/- 10.7100 | Val acc: 57.7500,54.1250, 10.710,57.7500
+raw10_Diff,3,0.2,0,400,2,400,2,1,JointSheaf Init,Test acc: 90.8750 +/- 6.3010 | Val acc: 93.8750,90.8750, 6.3010,93.8750
+raw10_Diff,3,0.2,0,400,2,400,2,1,JointSheaf Params,Test acc: 93.5000 +/- 3.3912 | Val acc: 95.2500,93.5000, 3.3912,95.2500
+raw20_Diff,3,0.4,0,400,2,400,2,1,MLP,Test acc: 53.1250 +/- 7.6086 | Val acc: 58.8750,53.1250, 7.6086,58.8750
+raw20_Diff,3,0.4,0,400,2,400,2,1,VanillaSheaf,Test acc: 47.5000 +/- 4.6435 | Val acc: 48.6250,47.5000, 4.6435,48.6250
+raw20_Diff,3,0.4,0,400,2,400,2,1,DiagSheaf,Test acc: 78.6250 +/- 3.0337 | Val acc: 76.5000,78.6250, 3.0337,76.5000
+raw20_Diff,3,0.4,0,400,2,400,2,1,JointSheaf NoInit,Test acc: 54.8750 +/- 11.4216 | Val acc: 60.1250,54.8750, 11.421,60.1250
+raw20_Diff,3,0.4,0,400,2,400,2,1,JointSheaf Init,Test acc: 85.6250 +/- 10.0195 | Val acc: 86.6250,85.6250, 10.019,86.6250
+raw20_Diff,3,0.4,0,400,2,400,2,1,JointSheaf Params,Test acc: 87.6250 +/- 5.3165 | Val acc: 90.1250,87.6250, 5.3165,90.1250
+raw30_Diff,3,0.6,0,400,2,400,2,1,MLP,Test acc: 51.8750 +/- 5.3982 | Val acc: 60.7500,51.8750, 5.3982,60.7500
+raw30_Diff,3,0.6,0,400,2,400,2,1,VanillaSheaf,Test acc: 47.5000 +/- 3.8324 | Val acc: 49.5000,47.5000, 3.8324,49.5000
+raw30_Diff,3,0.6,0,400,2,400,2,1,DiagSheaf,Test acc: 67.2500 +/- 4.2500 | Val acc: 69.0000,67.2500, 4.2500,69.0000
+raw30_Diff,3,0.6,0,400,2,400,2,1,JointSheaf NoInit,Test acc: 52.6250 +/- 4.0869 | Val acc: 56.6250,52.6250, 4.0869,56.6250
+raw30_Diff,3,0.6,0,400,2,400,2,1,JointSheaf Init,Test acc: 76.8750 +/- 8.9835 | Val acc: 78.1250,76.8750, 8.9835,78.1250
+raw30_Diff,3,0.6,0,400,2,400,2,1,JointSheaf Params,Test acc: 85.5000 +/- 4.1533 | Val acc: 85.7500,85.5000, 4.1533,85.7500
+raw40_Diff,3,0.8,0,400,2,400,2,1,MLP,Test acc: 56.2500 +/- 7.6240 | Val acc: 55.8750,56.2500, 7.6240,55.8750
+raw40_Diff,3,0.8,0,400,2,400,2,1,VanillaSheaf,Test acc: 47.8750 +/- 6.0221 | Val acc: 48.1250,47.8750, 6.0221,48.1250
+raw40_Diff,3,0.8,0,400,2,400,2,1,DiagSheaf,Test acc: 61.2500 +/- 8.7500 | Val acc: 63.7500,61.2500, 8.7500,63.7500
+raw40_Diff,3,0.8,0,400,2,400,2,1,JointSheaf NoInit,Test acc: 52.7500 +/- 7.8819 | Val acc: 57.8750,52.7500, 7.8819,57.8750
+raw40_Diff,3,0.8,0,400,2,400,2,1,JointSheaf Init,Test acc: 72.8750 +/- 7.1600 | Val acc: 70.3750,72.8750, 7.1600,70.3750
+raw40_Diff,3,0.8,0,400,2,400,2,1,JointSheaf Params,Test acc: 70.1250 +/- 10.1157 | Val acc: 69.1250,70.1250, 10.115,69.1250
+raw50_Diff,3,1,0,400,2,400,2,1,MLP,Test acc: 55.2500 +/- 7.0445 | Val acc: 58.6250,55.2500, 7.0445,58.6250
+raw50_Diff,3,1,0,400,2,400,2,1,VanillaSheaf,Test acc: 44.1250 +/- 5.0327 | Val acc: 51.0000,44.1250, 5.0327,51.0000
+raw50_Diff,3,1,0,400,2,400,2,1,DiagSheaf,Test acc: 60.0000 +/- 7.0711 | Val acc: 65.5000,60.0000, 7.0711,65.5000
+raw50_Diff,3,1,0,400,2,400,2,1,JointSheaf NoInit,Test acc: 56.5000 +/- 6.4177 | Val acc: 59.6250,56.5000, 6.4177,59.6250
+raw50_Diff,3,1,0,400,2,400,2,1,JointSheaf Init,Test acc: 59.1250 +/- 5.9961 | Val acc: 63.7500,59.1250, 5.9961,63.7500
+raw50_Diff,3,1,0,400,2,400,2,1,JointSheaf Params,Test acc: 66.2500 +/- 2.6810 | Val acc: 67.6250,66.2500, 2.6810,67.6250
