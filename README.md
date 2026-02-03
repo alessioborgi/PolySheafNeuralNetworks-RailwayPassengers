@@ -521,6 +521,39 @@ This repository is based in part on the **Neural Sheaf Diffusion** paper:
 
 ---
 
+## 10.5: DOCKER CONTAINER:**
+1. Build the image:
+   ```bash
+   podman build -t hetero-polysd:latest .
+   ```
+2. Run a shell with GPU access (adjust volume paths for your system):
+   ```bash
+   podman run -it --rm \
+     -v /home/$USER/PolySheafNeuralNetworks-RailwayPassengers:/work/project \
+     -v /mnt/ssd2/$USER/hetero:/work/data \
+     --device nvidia.com/gpu=all \
+     --ipc host \
+     hetero-polysd:latest \
+     /bin/bash
+   ```
+3. Inside the container, launch sweeps as usual:
+   ```bash
+   wandb sweep --project PolySheafNeuralNetworks-RailwayPassengers sweeps/nc/dblp/diag_sheaf.yaml
+   wandb agent sheaf_hypergraphs/PolySheafNeuralNetworks-RailwayPassengers/<SWEEP_ID>
+   ```
+
+### Development Dependencies
+
+Install additional development tools:
+```bash
+uv sync --group dev
+```
+
+This includes `pytest` and `pytest-cov` for testing.
+
+---
+
+
 ## 11: License
 
 See `LICENSE` for details.
