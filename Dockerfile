@@ -16,9 +16,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel uv
 RUN mkdir /.cache && chmod 777 /.cache
 
 WORKDIR /work/project
-COPY pyproject.toml uv.lock README.md ./
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
-RUN uv sync --frozen 
+COPY requirements.txt ./
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install -r requirements.txt
 ENV PATH="/opt/venv/bin:$PATH"
-
 
