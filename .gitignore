@@ -1,0 +1,26 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PyTest
+.pytest_cache/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Experiment logs
+wandb/
+
+# OS
+.DS_Store
+
+# Data / generated artifacts
+datasets/pos_encodings/
