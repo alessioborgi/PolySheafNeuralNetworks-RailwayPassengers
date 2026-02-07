@@ -7,6 +7,9 @@ channels:
 dependencies:
   - python=3.9.9
   - pip=21.3.1
+  - numpy<2
+  - scipy
+  - cython<3
   - pytorch>=1.12         # MPS‐enabled build on macOS
   - torchvision
   - torchaudio
