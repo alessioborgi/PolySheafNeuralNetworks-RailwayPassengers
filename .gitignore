@@ -21,6 +21,3 @@ wandb/
 
 # OS
 .DS_Store
-
-# Data / generated artifacts
-datasets/pos_encodings/

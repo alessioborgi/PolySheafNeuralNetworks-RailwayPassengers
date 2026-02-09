@@ -1,0 +1,159 @@
+[project]
+name = "polynsd"
+version = "0.1.0"
+description = "Research project for Polynomial Neural Spectral Dynamics"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    # PyTorch
+    "torch==2.8.0",
+    "torchvision",
+    "torchaudio",
+    "torch-geometric",
+    "lightning==2.6.0",
+    # Neural ODEs
+    "torchdiffeq==0.2.2",
+    "torch-householder==1.0.1", # C++ JIT compiler needed (MSVC for Windows)
+    # Utilities
+    "tqdm",
+    "networkx",
+    "matplotlib",
+    "pandas",
+    "wandb",
+    "hydra-core",
+    "seaborn",
+    "strenum",
+    # PyG specialized extensions
+    "pyg-lib",
+    "torch-cluster",
+    "torch-scatter",
+    "torch-sparse",
+    "torch-spline-conv",
+    "sentence_transformers", #needed for movielens preprocessing
+    "ruff>=0.14.14",
+]
+#for macOS do 'export LDFLAGS="${LDFLAGS/--no-as-needed/}"' before uv sync
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'", "sys_platform == 'win32'"]
+
+# --- SOURCE MAPPING ---
+[tool.uv.sources]
+# Direct Wheel Links for PyG Extensions (Bypasses 403 Errors)
+torch = [
+    { index = "torch-cu128", marker = "sys_platform == 'win32'" }
+]
+torchvision = [
+    { index = "torch-cu128", marker = "sys_platform == 'win32'" }
+]
+torchaudio = [
+    { index = "torch-cu128", marker = "sys_platform == 'win32'" }
+]
+
+pyg-lib = [
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcpu/pyg_lib-0.5.0%2Bpt28-cp313-cp313-macosx_14_0_universal2.whl", marker = "sys_platform == 'darwin'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/pyg_lib-0.5.0%2Bpt28cu128-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/pyg_lib-0.5.0%2Bpt28cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'"}
+]
+torch-cluster = [
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcpu/torch_cluster-1.6.3-cp313-cp313-macosx_10_13_universal2.whl", marker = "sys_platform == 'darwin'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_cluster-1.6.3%2Bpt28cu128-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_cluster-1.6.3%2Bpt28cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'"}
+]
+torch-scatter = [
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcpu/torch_scatter-2.1.2-cp313-cp313-macosx_10_13_universal2.whl", marker = "sys_platform == 'darwin'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_scatter-2.1.2%2Bpt28cu128-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_scatter-2.1.2%2Bpt28cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'"}
+]
+torch-sparse = [
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcpu/torch_sparse-0.6.18-cp313-cp313-macosx_11_0_universal2.whl", marker = "sys_platform == 'darwin'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_sparse-0.6.18%2Bpt28cu128-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_sparse-0.6.18%2Bpt28cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'"}
+]
+torch-spline-conv = [
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcpu/torch_spline_conv-1.2.2-cp313-cp313-macosx_10_13_universal2.whl", marker = "sys_platform == 'darwin'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_spline_conv-1.2.2%2Bpt28cu128-cp313-cp313-linux_x86_64.whl", marker = "sys_platform == 'linux'"},
+    { url = "https://data.pyg.org/whl/torch-2.8.0%2Bcu128/torch_spline_conv-1.2.2%2Bpt28cu128-cp313-cp313-win_amd64.whl", marker = "sys_platform == 'win32'"}
+]
+
+[[tool.uv.index]]
+name = "torch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.14",
+]
+
+[tool.pytest.ini_options]
+# Set the minimum version of pytest
+minversion = "7.0"
+
+# Default arguments:
+# -ra: show extra test summary info for all except passed
+# -q: quiet mode
+# --cov: generate coverage for your source folder
+addopts = "-ra -q --cov=src --disable-warnings"
+
+# Directories to search for tests
+testpaths = [
+    "tests",
+]
+
+# Ensure pytest finds your local modules correctly
+pythonpath = ["polynsd"]
+
+[tool.ruff]
+src = ["src/hypersheaf"]
+line-length=88
+
+[tool.ruff.format]
+quote-style="double"
+
+[tool.ruff.lint]
+select = [
+    "B",  # flake8-bugbear
+    "D",  # pydocstyle
+    "E",
+]
+ignore = [
+    "D100",  # TODO Don't ignore "Missing docstring in public module"
+    "D101",  # TODO Don't ignore "Missing docstring in public class"
+    "D102",  # TODO Don't ignore "Missing docstring in public method"
+    "D103",  # TODO Don't ignore "Missing docstring in public function"
+    "D104",  # TODO Don't ignore "Missing docstring in public package"
+    "D105",  # Ignore "Missing docstring in magic method"
+    "D107",  # Ignore "Missing docstring in __init__"
+    "D205",  # Ignore "blank line required between summary line and description"
+]
+exclude=["test_*.py", "conftest.py"]
+
+
+[tool.ruff.lint.pydocstyle]
+convention="google"
+
+[tool.coverage.report]
+exclude_also = [
+    'def __repr__',
+    'def reset_parameters',
+    'if self.debug:',
+    'if settings.DEBUG',
+    'raise AssertionError',
+    'raise NotImplementedError',
+    'if 0:',
+    'if __name__ == .__main__.:',
+    'if TYPE_CHECKING:',
+    'class .*\bProtocol\):',
+    '@(abc\.)?abstractmethod',
+]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "polynsd"
+]
