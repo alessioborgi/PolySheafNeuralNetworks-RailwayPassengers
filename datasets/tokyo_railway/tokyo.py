@@ -1,5 +1,6 @@
 import csv
 import torch
+import pandas as pd
 
 def load_tokyo_railway_passengers():
     """
@@ -8,14 +9,14 @@ def load_tokyo_railway_passengers():
     Returns:
         A list of tuples, where each tuple contains the station, year, and the number of passengers.
     """
-    data = []
+    data = {}
     with open('datasets/tokyo_railway/graph_passenger_survey202411.csv', 'r') as file:
         reader = csv.reader(file)
         next(reader)  # Skip header
         for row in reader:
             station = row[0]
-            # year = row[1]
-            # passengers = int(row[2])
+            year = row[1]
+            passengers = int(row[2])
             # line = row[3]
 
             data.append((station, None, None, None))
@@ -54,3 +55,5 @@ if __name__ == "__main__":
         for i in range(len(data)):
             for j in range(i + 1, len(data)):
                 pass
+
+
