@@ -15,6 +15,7 @@ from torch_geometric.data import InMemoryDataset, download_url, Data
 from torch_geometric.utils import remove_self_loops
 from torch_geometric.utils.undirected import to_undirected
 from torch_sparse import coalesce
+import pandas as pd
 
 from utils.classic import Planetoid
 from definitions import ROOT_DIR
@@ -547,7 +548,10 @@ def get_dataset(name: str):
             transform=T.NormalizeFeatures(),
         )
         dataset.data = _make_undirected_clean(dataset.data)
-        
+
+    # --- Tokyo Dataset (local files, custom loader) ---
+    elif name_key in {"tokyo_railway"}:
+        dataset = TokyoRailway(root=data_root, name=name_key)
     else:
         raise ValueError(f"dataset {name} not supported in dataloader")
 
@@ -1088,3 +1092,47 @@ class SnapPatents(InMemoryDataset):
             data = self.pre_transform(data)
 
         torch.save(self.collate([data]), self.processed_paths[0])
+
+class TokyoRailway(InMemoryDataset):
+    """
+    Loads the Tokyo Railway dataset from local .pt files. Expects a folder named "tokyo_railway" under datasets/
+    """
+
+    def __init__(self, root: str, name, transform=None, pre_transform=None):
+        self.name = name.lower()
+        super(TokyoRailway, self).__init__(root, transform, pre_transform)
+        # self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
+
+    @property
+    def raw_dir(self):
+        return osp.join(self.root, self.name, 'raw')
+
+    @property
+    def processed_dir(self):
+        return osp.join(self.root, self.name, 'processed')
+    
+    @property
+    def raw_file_names(self):
+        return ["line_station_connectionV1130.csv", "pass_survey_tokyov1109.csv"]
+
+    @property
+    def processed_file_names(self):
+        return "data.pt"
+
+    def download(self):
+        # No downloading since we expect local files. Just check existence.
+        for fname in self.raw_file_names:
+            path = osp.join(self.raw_dir, fname)
+            if not osp.exists(path):
+                raise FileNotFoundError(f"Expected file {fname} not found in {self.raw_dir}. Please place it there.")
+
+    def process(self):
+        # Load required tensors
+        connection_pd = pd.read_csv(self.raw_paths[0])
+        connection_pd
+        print(connection_pd.head())
+
+if __name__ == "__main__":
+    # Example usage:
+    dataset = get_dataset("tokyo_railway")
+    print(dataset[0])
