@@ -1130,7 +1130,60 @@ class TokyoRailway(InMemoryDataset):
         # Load required tensors
         connection_pd = pd.read_csv(self.raw_paths[0])
         connection_pd
-        print(connection_pd.head())
+        
+        # get station list from connection_pd (both station_cd1 and station_cd2) to ensure we have all stations
+        station_list_connection_1 = connection_pd[['station_cd1', 'station_name1']].rename(columns={'station_cd1': 'station_id', 'station_name1': 'S12_001'}).drop_duplicates()
+        station_list_connection_2 = connection_pd[['station_cd2', 'station_name2']].rename(columns={'station_cd2': 'station_id', 'station_name2': 'S12_001'}).drop_duplicates()
+        station_list_pd = pd.concat([station_list_connection_1, station_list_connection_2]).drop_duplicates().reset_index(drop=True)
+
+        # list of all the stations in the passenger survey data that are also in the connection data
+        passenger_survey_pd = pd.read_csv('./pass_survey_tokyov1109.csv')
+        passenger_survey_pd['station_id'] = passenger_survey_pd['station_id'].astype(int)
+        passenger_survey_pd[passenger_survey_pd['station_id'].isin(station_list_pd['station_id'].values)]
+
+        matching_passenger_survey_pd = passenger_survey_pd[passenger_survey_pd['station_id'].isin(station_list_pd['station_id'].values)].reset_index(drop=True)
+        matching_passenger_survey_pd = matching_passenger_survey_pd.sort_values('station_id').reset_index(drop=True)
+
+        # max-min normalize passenger counts:
+        year_cols = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+
+        # normalization with global values:
+        global_min = matching_passenger_survey_pd[year_cols].min().min()
+        global_max = matching_passenger_survey_pd[year_cols].max().max()
+        for year in year_cols:
+            matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - global_min) / (global_max - global_min)
+
+        # COMMENTED OUT FOR EXPERIMENTATION:
+        # normalization with row values: 
+        # row_mins = matching_passenger_survey_pd[year_cols].min(axis=1)
+        # row_maxs = matching_passenger_survey_pd[year_cols].max(axis=1)
+        # for year in year_cols:
+        #     matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - row_mins) / (row_maxs - row_mins)
+
+        # and now we need to make sure nodes in the passenger survey match up with nodes in the connection data
+        # the passenger_survey_pd only has nodes that are in the station_list_pd, so we can just filter the station_list_pd to only include those nodes
+        # note that both data had stations that were not in the other
+        station_list_pd = station_list_pd[station_list_pd['station_id'].isin(matching_passenger_survey_pd['station_id'].values)].reset_index(drop=True)
+        station_list_pd = station_list_pd.sort_values('station_id').reset_index(drop=True)
+
+        station_node_pd = connection_pd[connection_pd['station_cd1'].isin(station_list_pd['station_id'].values) & connection_pd['station_cd2'].isin(station_list_pd['station_id'].values)][['line', 'station_cd1', 'station_cd2', 'distance']].drop_duplicates()
+
+        # build graph structure using networkx
+        import networkx as nx
+        G = nx.Graph()
+        G = nx.from_pandas_edgelist(station_node_pd, 'station_cd1', 'station_cd2', edge_attr=True)
+        
+        node_order = list(G.nodes())
+        print(f"Number of nodes in G: {len(G.nodes())}")
+        print(f"Number of edges in G: {len(G.edges())}")
+
+        # we need to make sure the station_list_pd is in the same order as the nodes in the graph G, which is the order the adjacency matrix will use
+        station_list_pd = station_list_pd.set_index('station_id').loc[node_order].reset_index(drop=False)
+        station_list_pd
+
+        # and we also need to make sure the passenger survey data is in the same order as the nodes in the graph G, which is the order the adjacency matrix will use
+        matching_passenger_survey_pd = matching_passenger_survey_pd.set_index('station_id').loc[node_order].reset_index(drop=False)
+        matching_passenger_survey_pd
 
 if __name__ == "__main__":
     # Example usage:
