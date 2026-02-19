@@ -12,7 +12,7 @@ import torch_geometric.transforms as T
 from typing import Optional, Callable, List, Union, Dict, Any
 from torch_geometric.datasets import HeterophilousGraphDataset, WikiCS
 from torch_geometric.data import InMemoryDataset, download_url, Data
-from torch_geometric.utils import remove_self_loops
+from torch_geometric.utils import remove_self_loops, from_networkx
 from torch_geometric.utils.undirected import to_undirected
 from torch_sparse import coalesce
 import pandas as pd
@@ -1101,7 +1101,7 @@ class TokyoRailway(InMemoryDataset):
     def __init__(self, root: str, name, transform=None, pre_transform=None):
         self.name = name.lower()
         super(TokyoRailway, self).__init__(root, transform, pre_transform)
-        # self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
+        self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
 
     @property
     def raw_dir(self):
@@ -1137,7 +1137,7 @@ class TokyoRailway(InMemoryDataset):
         station_list_pd = pd.concat([station_list_connection_1, station_list_connection_2]).drop_duplicates().reset_index(drop=True)
 
         # list of all the stations in the passenger survey data that are also in the connection data
-        passenger_survey_pd = pd.read_csv('./pass_survey_tokyov1109.csv')
+        passenger_survey_pd = pd.read_csv(self.raw_paths[1])
         passenger_survey_pd['station_id'] = passenger_survey_pd['station_id'].astype(int)
         passenger_survey_pd[passenger_survey_pd['station_id'].isin(station_list_pd['station_id'].values)]
 
@@ -1183,9 +1183,53 @@ class TokyoRailway(InMemoryDataset):
 
         # and we also need to make sure the passenger survey data is in the same order as the nodes in the graph G, which is the order the adjacency matrix will use
         matching_passenger_survey_pd = matching_passenger_survey_pd.set_index('station_id').loc[node_order].reset_index(drop=False)
-        matching_passenger_survey_pd
 
-if __name__ == "__main__":
-    # Example usage:
-    dataset = get_dataset("tokyo_railway")
-    print(dataset[0])
+        # get operator form line name
+        station_node_pd['operator'] = station_node_pd['line'].apply(lambda x: x.split('.')[0])
+
+        # Aggregate passenger survey by station_id (handles duplicate rows per station)
+        survey_filtered = matching_passenger_survey_pd[matching_passenger_survey_pd['station_id'].isin(node_order)]
+        survey_agg = survey_filtered.groupby('station_id')[['2013','2014','2015','2016','2017','2018','2019']].mean()
+
+        #one hot encoding for line and operator
+        all_operators = sorted(station_node_pd['operator'].unique())
+        all_lines = sorted(station_node_pd['line'].unique())
+
+        node_operator_df = pd.DataFrame(0, index=node_order, columns=all_operators)
+        node_line_df = pd.DataFrame(0, index=node_order, columns=all_lines)
+
+        for _, row in station_node_pd.iterrows():
+            for node_col in ['station_cd1', 'station_cd2']:
+                node = row[node_col]
+                if node in node_operator_df.index:
+                    node_operator_df.loc[node, row['operator']] = 1
+                if node in node_line_df.index:
+                    node_line_df.loc[node, row['line']] = 1
+
+        operator_features = torch.tensor(node_operator_df.values, dtype=torch.float)
+        line_features = torch.tensor(node_line_df.values, dtype=torch.float)
+
+        # Reorder features to match graph node ordering
+
+        #Previously, without masking-type learning:
+        # train_x = torch.tensor(survey_agg.loc[node_order][['2013', '2014', '2015', '2016', '2017']].to_numpy(), dtype=torch.float)
+        # train_x = torch.cat([train_x, operator_features, line_features], dim=1)  # Concatenate all features
+        # train_y = torch.tensor(survey_agg.loc[node_order][['2018']].to_numpy(), dtype=torch.float)
+
+        # Now, with masking to suit sheaf learning procedure:
+        x = torch.tensor(survey_agg.loc[node_order][['2013', '2014', '2015', '2016', '2017', '2018']].to_numpy(), dtype=torch.float)
+        x = torch.cat([x, operator_features, line_features], dim=1)  # Concatenate all features
+        y = torch.tensor(survey_agg.loc[node_order][['2019']].to_numpy(), dtype=torch.float)
+        data = from_networkx(G)
+        data.x = x
+        data.y = y
+        data = _make_undirected_clean(data)
+        data = data if self.pre_transform is None else self.pre_transform(data)
+        print(f"Final data object: {data}")
+        torch.save(self.collate([data]), self.processed_paths[0])
+
+# if __name__ == "__main__":
+#     # Example usage:
+#     dataset = TokyoRailway(root="datasets", name="tokyo_railway")
+#     print(dataset[0])
+#     print(dataset[0].x)

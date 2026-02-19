@@ -252,6 +252,7 @@ def train_step_with_optional_flops(
     model,
     optimizer,
     data,
+    **kwargs,
 ) -> Tuple[Optional[float], float]:
     """
         Executes the real train step exactly once, optionally wrapped by torch.profiler.
@@ -271,7 +272,7 @@ def train_step_with_optional_flops(
             with_stack=False,
             with_flops=True,
         ) as prof:
-            train_fn(model, optimizer, data)
+            train_fn(model, optimizer, data, **kwargs)
 
         if torch.cuda.is_available() and str(device).startswith("cuda"):
             try:
@@ -281,7 +282,7 @@ def train_step_with_optional_flops(
 
         flops = sum_profiler_flops(prof)
     else:
-        train_fn(model, optimizer, data)
+        train_fn(model, optimizer, data, **kwargs)
         flops = None
         if torch.cuda.is_available() and str(device).startswith("cuda"):
             try:

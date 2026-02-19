@@ -58,25 +58,35 @@ def normalize_device(dev):
 
 
 # ----------------------------- train / eval -----------------------------
-def train(model, optimizer, data):
+def train(model, optimizer, data, task="classification"):
     model.train()
     optimizer.zero_grad()
     out = model(data.x)[data.train_mask]
-    loss = F.nll_loss(out, data.y[data.train_mask])
+    if task == "regression":
+        loss = F.l1_loss(out.squeeze(-1), data.y[data.train_mask].float())
+    else:
+        loss = F.nll_loss(out, data.y[data.train_mask])
     loss.backward()
     optimizer.step()
     del out
 
 
-def test(model, data):
+def test(model, data, task="classification"):
     model.eval()
     with torch.no_grad():
         logits = model(data.x)
         accs, losses, preds = [], [], []
         for _, mask in data("train_mask", "val_mask", "test_mask"):
-            pred = logits[mask].max(1)[1]
-            acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
-            loss = F.nll_loss(logits[mask], data.y[mask])
+            if task == "regression":
+                pred = logits[mask].squeeze(-1)
+                # Use negative MAE as "acc" so higher is better (consistent with early stopping)
+                mae = F.l1_loss(pred, data.y[mask].float())
+                acc = -mae.item()
+                loss = F.l1_loss(pred, data.y[mask].float())
+            else:
+                pred = logits[mask].max(1)[1]
+                acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
+                loss = F.nll_loss(logits[mask], data.y[mask])
             preds.append(pred.detach().cpu())
             accs.append(acc)
             losses.append(loss.detach().cpu())
@@ -96,6 +106,11 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     """
     data = dataset[0]
     data = get_fixed_splits(data, aget(args, "dataset"), fold)
+    print(f"data splits for fold {fold}:")
+    print(f"  train: {data.train_mask.sum().item()} samples")
+    print(f"  val: {data.val_mask.sum().item()} samples")
+    print(f"  test: {data.test_mask.sum().item()} samples")
+
     data = data.to(aget(args, "device"))
 
     model = model_cls(data.edge_index, args).to(aget(args, "device"))
@@ -125,8 +140,9 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     stop_strategy = str(aget(args, "stop_strategy", "acc"))
 
     for epoch in range(epochs):
-        train(model, optimizer, data)
-        [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data)
+        task = str(aget(args, "task", "classification"))
+        train(model, optimizer, data, task=task)
+        [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data, task=task)
 
         # EXACTLY AS BEFORE: only fold 0, and with step=epoch
         if fold == 0:
@@ -279,6 +295,7 @@ def run_exp_resource(args, dataset, model_cls, fold: int) -> Tuple[float, float,
             global_step = fold_step_base + int(epoch)
 
             do_profile_now = profile_flops and (epoch < flops_profile_epochs)
+            task = str(aget(args, "task", "classification"))
             flops, step_time_s = train_step_with_optional_flops(
                 enabled=profile_flops,
                 device=device,
@@ -287,12 +304,14 @@ def run_exp_resource(args, dataset, model_cls, fold: int) -> Tuple[float, float,
                 model=model,
                 optimizer=optimizer,
                 data=data,
+                task=task,
             )
             step_times.append(float(step_time_s))
             if flops is not None:
                 flops_samples.append(float(flops))
 
-            [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data)
+            task = str(aget(args, "task", "classification"))
+            [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data, task=task)
 
             # Per-epoch curves only for fold 0
             if fold == 0:
@@ -440,10 +459,14 @@ if __name__ == "__main__":
     args.sha = sha
     args.graph_size = dataset[0].x.size(0)
     args.input_dim = dataset[0].x.shape[1]
-    try:
-        args.output_dim = dataset.num_classes
-    except Exception:
-        args.output_dim = torch.unique(dataset[0].y).shape[0]
+    if args.task == "regression":
+        # For regression, output_dim = number of target columns (typically 1)
+        args.output_dim = 1 if dataset[0].y.dim() == 1 else dataset[0].y.shape[1]
+    else:
+        try:
+            args.output_dim = dataset.num_classes
+        except Exception:
+            args.output_dim = torch.unique(dataset[0].y).shape[0]
     args.device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu")
 
     assert args.normalised or args.deg_normalised

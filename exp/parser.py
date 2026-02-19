@@ -75,6 +75,10 @@ def get_parser():
         'DiagSheafODEPolynomial', 'BundleSheafODEPolynomial', 'GeneralSheafODEPolynomial'
     ], default=None)
     parser.add_argument('--entity', type=str, default=None)
+    parser.add_argument('--wandb_project', type=str, default=None,
+                        help="W&B project name. Defaults to an internal name if not set.")
+    parser.add_argument('--task', type=str, choices=['classification', 'regression'], default='classification',
+                        help="Task type: 'classification' (nll_loss + accuracy) or 'regression' (mse_loss + MAE).")
     parser.add_argument('--evectors', type=int, default=0,
                         help="Number of Laplacian PE eigenvectors to use.")
 

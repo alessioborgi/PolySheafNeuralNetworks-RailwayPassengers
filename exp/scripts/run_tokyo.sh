@@ -3,7 +3,7 @@
  # Possible models: [ DiagSheaf, BundleSheaf, GeneralSheaf, DiagSheafChebyshev, BundleSheafChebyshev, GeneralSheafChebyshev, EquivariantDiagSheaf, EquivariantBundleSheaf, EquivariantGeneralSheaf, EquivariantDiagSheafChebyshev] 
 
 python -m exp.run \
-    # --dataset=texas \
+    --dataset=tokyo_railway \
     --d=3 \
     --layers=4 \
     --hidden_channels=20 \
@@ -15,6 +15,7 @@ python -m exp.run \
     --dropout=0.7 \
     --use_act=True \
     --model=DiagSheafPolynomial \
+    --task=regression \
     --polynomial_type="ChebyshevType1" \
     --normalised=True \
     --deg_normalised=False \
@@ -26,5 +27,5 @@ python -m exp.run \
     --folds=10 \
     --cuda=0 \
     --entity="${ENTITY}" \
-    --wandb_project="tokyo_railway" \
+    --wandb_project="Tokyo_Railway" \
     
