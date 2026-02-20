@@ -1189,7 +1189,9 @@ class TokyoRailway(InMemoryDataset):
 
         # Aggregate passenger survey by station_id (handles duplicate rows per station)
         survey_filtered = matching_passenger_survey_pd[matching_passenger_survey_pd['station_id'].isin(node_order)]
+        #if there are multiple rows in the passenger survey for the same station_id, we take the mean of the passenger counts for that station_id across those rows, so that we have a single row per station_id that matches up with the nodes in the graph G:
         survey_agg = survey_filtered.groupby('station_id')[['2013','2014','2015','2016','2017','2018','2019']].mean()
+
 
         #one hot encoding for line and operator
         all_operators = sorted(station_node_pd['operator'].unique())

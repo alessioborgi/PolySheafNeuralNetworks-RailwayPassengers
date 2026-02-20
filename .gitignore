@@ -21,3 +21,6 @@ wandb/
 
 # OS
 .DS_Store
+
+#vs code
+.vscode/
