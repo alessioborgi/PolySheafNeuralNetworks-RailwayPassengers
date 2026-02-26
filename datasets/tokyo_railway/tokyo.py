@@ -31,6 +31,94 @@ class GCN(nn.Module):
         x = torch.relu(x)
         x = self.layer_2(x)
         return x
+
+
+class DenseGATLayer(nn.Module):
+    """A single dense GAT attention head with valued masking.
+    
+    Instead of binary masking (on/off), the continuous adjacency weights
+    scale the learned attention coefficients post-softmax:
+        alpha'_ij = softmax(e_ij) * A_ij
+    This lets distance/correlation values modulate how much each
+    neighbor's message is trusted, while the network still learns
+    *who* to attend to via standard GAT attention.
+    """
+    def __init__(self, in_features, out_features, adjacency_matrix, dropout=0.6, alpha=0.2):
+        super(DenseGATLayer, self).__init__()
+        self.W = nn.Linear(in_features, out_features, bias=False)
+        # Attention vector a splits into [a_left | a_right], each of size out_features
+        self.a_left = nn.Parameter(torch.zeros(out_features, 1))
+        self.a_right = nn.Parameter(torch.zeros(out_features, 1))
+        nn.init.xavier_uniform_(self.W.weight)
+        nn.init.xavier_uniform_(self.a_left)
+        nn.init.xavier_uniform_(self.a_right)
+
+        self.leaky_relu = nn.LeakyReLU(alpha)
+        self.dropout = nn.Dropout(dropout)
+
+        # Store the continuous adjacency values (with self-loops = 1.0)
+        A = adjacency_matrix.clone()
+        A = A + torch.eye(A.size(0))  # self-loops with weight 1
+        self.register_buffer('adj_values', A)  # [N, N] — continuous weights
+        # Binary mask for numerical stability: only mask true structural zeros
+        self.register_buffer('adj_mask', (A.abs() > 0).float())  # [N, N]
+
+    def forward(self, h):
+        # h: [N, in_features]
+        Wh = self.W(h)  # [N, out_features]
+
+        # Compute attention logits: e_ij = LeakyReLU(a_left^T Wh_i + a_right^T Wh_j)
+        e_left = Wh @ self.a_left    # [N, 1]
+        e_right = Wh @ self.a_right  # [N, 1]
+        e = e_left + e_right.T       # [N, N] via broadcast
+        e = self.leaky_relu(e)
+
+        # Mask only true structural zeros (where A_ij == 0) for softmax stability
+        e = e.masked_fill(self.adj_mask == 0, float('-inf'))
+        attention = F.softmax(e, dim=1)           # [N, N]
+
+        # Valued masking: scale attention by continuous edge weights
+        attention = attention * self.adj_values    # [N, N]
+
+        attention = self.dropout(attention)
+
+        return attention @ Wh  # [N, out_features]
+
+
+class GAT(nn.Module):
+    """Two-layer dense Graph Attention Network.
+
+    Layer 1: multi-head attention (concatenation), ELU activation
+    Layer 2: single-head attention, no activation (regression output)
+    """
+    def __init__(self, in_features, out_features, adjacency_matrix,
+                 n_heads=4, dropout=0.6):
+        super(GAT, self).__init__()
+        assert in_features % n_heads == 0, (
+            f"in_features ({in_features}) must be divisible by n_heads ({n_heads})")
+        head_dim = in_features // n_heads
+
+        # Layer 1: n_heads independent attention heads
+        self.heads = nn.ModuleList([
+            DenseGATLayer(in_features, head_dim, adjacency_matrix, dropout)
+            for _ in range(n_heads)
+        ])
+        self.feat_dropout = nn.Dropout(dropout)
+
+        # Layer 2: single-head attention producing the final output
+        self.out_layer = DenseGATLayer(in_features, out_features,
+                                       adjacency_matrix, dropout)
+
+    def forward(self, x):
+        # x: [N, in_features]
+        x = self.feat_dropout(x)
+        # Multi-head attention -> concatenate along feature dim
+        x = torch.cat([head(x) for head in self.heads], dim=-1)  # [N, in_features]
+        x = F.elu(x)
+        x = self.feat_dropout(x)
+        x = self.out_layer(x)  # [N, out_features]
+        return x
+
     
 def train_with_masking(model, data, optimizer, inductive=False):
         model.train()
@@ -274,35 +362,38 @@ def main(args):
                 node_ordered_survey_agg.loc[station_id, 'lng'] = row2['station_lng2'].values[0]
 
     # ------------------------- CALCULATE PAIRWISE DISTANCES FOR DISTANCE-BASED ADJACENCY MATRIX ------------------
-    #calculate all the haversine distances to create the distance adjacency matrix (vectorized)
-    R = 3958.8  # Earth radius in miles
+    def get_distance_adjacency_matrix():
+        #calculate all the haversine distances to create the distance adjacency matrix (vectorized)
+        R = 3958.8  # Earth radius in miles
 
-    lats = np.radians(node_ordered_survey_agg['lat'].values)   # shape [N]
-    lngs = np.radians(node_ordered_survey_agg['lng'].values)   # shape [N]
+        lats = np.radians(node_ordered_survey_agg['lat'].values)   # shape [N]
+        lngs = np.radians(node_ordered_survey_agg['lng'].values)   # shape [N]
 
-    # Broadcast to [N, N]
-    dphi    = lats[:, None] - lats[None, :]
-    dlambda = lngs[:, None] - lngs[None, :]
+        # Broadcast to [N, N]
+        dphi    = lats[:, None] - lats[None, :]
+        dlambda = lngs[:, None] - lngs[None, :]
 
-    a = np.sin(dphi / 2)**2 + np.cos(lats[:, None]) * np.cos(lats[None, :]) * np.sin(dlambda / 2)**2
-    dist_np = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+        a = np.sin(dphi / 2)**2 + np.cos(lats[:, None]) * np.cos(lats[None, :]) * np.sin(dlambda / 2)**2
+        dist_np = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
-    # we have to invert the distances to get a similarity measure, so closer stations are more "correlated"
-    reverse_scaled_dist = np.exp(-dist_np/(args.sigma ** 2))
+        # we have to invert the distances to get a similarity measure, so closer stations are more "correlated"
+        reverse_scaled_dist = np.exp(-dist_np/(args.sigma ** 2))
 
-    distance_adjacency_matrix = torch.tensor(reverse_scaled_dist, dtype=torch.float32)
+        distance_adjacency_matrix = torch.tensor(reverse_scaled_dist, dtype=torch.float32)
+        return distance_adjacency_matrix
 
     # ----------------------- CALCULATE CORRELATION-BASED ADJACENCY MATRIX ----------------------
     # calculate pairwise Pearson correlation between rows of node_ordered_survey_agg[year_cols], which will be our correlation-based adjacency matrix:
     # faster way to compute correlation adjacency matrix using numpy broadcasting (but less memory efficient)
-    data_matrix = node_ordered_survey_agg[year_cols].values  # shape [N, T]
-    # 
-    data_matrix_centered = data_matrix - data_matrix.mean(axis=1, keepdims=True)  # center each node's time series
-    covariance_matrix = np.dot(data_matrix_centered, data_matrix_centered.T) / (data_matrix.shape[1] - 1)  # shape [N, N]
-    std_dev = np.sqrt(np.diag(covariance_matrix))  # shape [N]
-    correlation_adjacency_matrix = covariance_matrix / np.outer(std_dev, std_dev)  # shape [N, N]
-    correlation_adjacency_matrix = np.nan_to_num(correlation_adjacency_matrix)  # replace NaNs with 0 (in case of constant rows)
-    correlation_adjacency_matrix = torch.tensor(correlation_adjacency_matrix, dtype=torch.float32)
+    def get_correlation_adjacency_matrix():
+        data_matrix = node_ordered_survey_agg[year_cols].values  # shape [N, T]
+        data_matrix_centered = data_matrix - data_matrix.mean(axis=1, keepdims=True)  # center each node's time series
+        covariance_matrix = np.dot(data_matrix_centered, data_matrix_centered.T) / (data_matrix.shape[1] - 1)  # shape [N, N]
+        std_dev = np.sqrt(np.diag(covariance_matrix))  # shape [N]
+        correlation_adjacency_matrix = covariance_matrix / np.outer(std_dev, std_dev)  # shape [N, N]
+        correlation_adjacency_matrix = np.nan_to_num(correlation_adjacency_matrix)  # replace NaNs with 0 (in case of constant rows)
+        correlation_adjacency_matrix = torch.tensor(correlation_adjacency_matrix, dtype=torch.float32)
+        return correlation_adjacency_matrix
     
     # ------------------------- TRAINING ------------------
     default_adjacency_matrix = to_dense_adj(data.edge_index, max_num_nodes=data.num_nodes)[0]
@@ -310,24 +401,32 @@ def main(args):
     if adjacency_type == "con":
         adjacency_matrix = default_adjacency_matrix
     elif adjacency_type == "dis":
-        adjacency_matrix = distance_adjacency_matrix
+        adjacency_matrix = get_distance_adjacency_matrix()
     elif adjacency_type == "cor":
-        adjacency_matrix = correlation_adjacency_matrix.fill_diagonal_(0)  # zero out diagonal to remove self-loops in correlation adjacency
+        adjacency_matrix = get_correlation_adjacency_matrix().fill_diagonal_(0)  # zero out diagonal to remove self-loops in correlation adjacency
     elif adjacency_type == "d_con":
-        adjacency_matrix = torch.mul(distance_adjacency_matrix, default_adjacency_matrix)
+        adjacency_matrix = torch.mul(get_distance_adjacency_matrix(), default_adjacency_matrix)
     elif adjacency_type == "d_cor":
-        adjacency_matrix = torch.mul(distance_adjacency_matrix, correlation_adjacency_matrix)
+        adjacency_matrix = torch.mul(get_distance_adjacency_matrix(), get_correlation_adjacency_matrix())
     elif adjacency_type == "cor_con":
-        adjacency_matrix = torch.mul(correlation_adjacency_matrix, default_adjacency_matrix)
+        adjacency_matrix = torch.mul(get_correlation_adjacency_matrix(), default_adjacency_matrix)
     elif adjacency_type == "d_cor_con":
-        adjacency_matrix = torch.mul(distance_adjacency_matrix, correlation_adjacency_matrix)
+        adjacency_matrix = torch.mul(get_distance_adjacency_matrix(), get_correlation_adjacency_matrix())
         adjacency_matrix = torch.mul(adjacency_matrix, default_adjacency_matrix)
     else:
         raise ValueError(f"Unknown adjacency type: {adjacency_type}")
     
     inductive = aget(args, "inductive", False)
     in_features = data.train_x_mask.sum().item() if inductive else data.x.shape[1]
-    model = GCN(in_features=in_features, out_features=1, adjacency_matrix=adjacency_matrix)
+    model_type = aget(args, "model", "gcn")
+    if model_type == "gat":
+        n_heads = aget(args, "n_heads", 4)
+        dropout = aget(args, "dropout", 0.6)
+        model = GAT(in_features=in_features, out_features=1,
+                    adjacency_matrix=adjacency_matrix,
+                    n_heads=n_heads, dropout=dropout)
+    else:
+        model = GCN(in_features=in_features, out_features=1, adjacency_matrix=adjacency_matrix)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     for epoch in range(500):
         loss = train_with_masking(model, data, optimizer, inductive=inductive)
@@ -349,6 +448,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
     parser.add_argument("--inductive", action="store_true", help="Whether to use inductive learning setting (with column masking) instead of transductive")
     parser.add_argument("--sigma", type=float, default=5.0, help="Sigma smoothing parameter for distance-based adjacency matrix")
+    parser.add_argument("--model", type=str, default="gcn", choices=["gcn", "gat"], help="Model architecture to use")
+    parser.add_argument("--n_heads", type=int, default=2, help="Number of attention heads for GAT")
+    parser.add_argument("--dropout", type=float, default=0.6, help="Dropout rate for GAT")
     parser.add_argument("--sweep", action="store_true", help="Run all 7 adjacency types and write results to CSV")
     args = parser.parse_args()
 
@@ -356,7 +458,7 @@ if __name__ == "__main__":
         import csv
         adjacency_types = ["con", "dis", "cor", "d_con", "d_cor", "cor_con", "d_cor_con"]
         mode = "inductive" if args.inductive else "transductive"
-        out_path = os.path.join(os.path.dirname(__file__), f"gcn_sweep_{mode}_seed{args.seed}_sigma{args.sigma}.csv")
+        out_path = os.path.join(os.path.dirname(__file__), f"{args.model}_sweep_{mode}_seed{args.seed}_sigma{args.sigma}.csv")
         rows = []
         for adj_type in adjacency_types:
             print(f"\n{'='*60}")
