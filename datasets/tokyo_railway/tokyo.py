@@ -287,7 +287,10 @@ def main(args):
     a = np.sin(dphi / 2)**2 + np.cos(lats[:, None]) * np.cos(lats[None, :]) * np.sin(dlambda / 2)**2
     dist_np = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
-    distance_adjacency_matrix = torch.tensor(dist_np, dtype=torch.float32)
+    # we have to invert the distances to get a similarity measure, so closer stations are more "correlated"
+    reverse_scaled_dist = np.exp(-dist_np/(args.sigma ** 2))
+
+    distance_adjacency_matrix = torch.tensor(reverse_scaled_dist, dtype=torch.float32)
 
     # ----------------------- CALCULATE CORRELATION-BASED ADJACENCY MATRIX ----------------------
     # calculate pairwise Pearson correlation between rows of node_ordered_survey_agg[year_cols], which will be our correlation-based adjacency matrix:
@@ -338,14 +341,46 @@ def main(args):
     original_val_loss = val_loss * (global_max - global_min) #+ global_min
     original_test_loss = test_loss * (global_max - global_min) #+ global_min
     print(f"Final Train Loss (rescaled): {original_train_loss:.10f}, Val Loss (rescaled): {original_val_loss:.10f}, Test Loss (rescaled): {original_test_loss:.10f}")
+    return original_train_loss, original_val_loss, original_test_loss, train_loss, val_loss, test_loss
 
 if __name__ == "__main__":
-    # add args parsing for --train and --test flags, so that we can run the training and testing separately
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train", action="store_true", help="Run training")
-    parser.add_argument("--test", action="store_true", help="Run testing")
     parser.add_argument("--adjacency", type=str, default="con", help="Type of adjacency matrix to use")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
     parser.add_argument("--inductive", action="store_true", help="Whether to use inductive learning setting (with column masking) instead of transductive")
+    parser.add_argument("--sigma", type=float, default=5.0, help="Sigma smoothing parameter for distance-based adjacency matrix")
+    parser.add_argument("--sweep", action="store_true", help="Run all 7 adjacency types and write results to CSV")
     args = parser.parse_args()
-    main(args)
+
+    if args.sweep:
+        import csv
+        adjacency_types = ["con", "dis", "cor", "d_con", "d_cor", "cor_con", "d_cor_con"]
+        mode = "inductive" if args.inductive else "transductive"
+        out_path = os.path.join(os.path.dirname(__file__), f"gcn_sweep_{mode}_seed{args.seed}_sigma{args.sigma}.csv")
+        rows = []
+        for adj_type in adjacency_types:
+            print(f"\n{'='*60}")
+            print(f"Running adjacency type: {adj_type}")
+            print(f"{'='*60}")
+            args.adjacency = adj_type
+            train_loss, val_loss, test_loss, normalized_train_loss, normalized_val_loss, normalized_test_loss = main(args)
+            rows.append({
+                "adjacency": adj_type,
+                "mode": mode,
+                "seed": args.seed,
+                "sigma": args.sigma,
+                "train_mae": f"{train_loss:.4f}",
+                "val_mae": f"{val_loss:.4f}",
+                "test_mae": f"{test_loss:.4f}",
+                "normalized_train_mae": f"{normalized_train_loss:.4f}",
+                "normalized_val_mae": f"{normalized_val_loss:.4f}",
+                "normalized_test_mae": f"{normalized_test_loss:.4f}",
+            })
+        with open(out_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"\nResults written to {out_path}")
+        print(pd.DataFrame(rows).to_string(index=False))
+    else:
+        main(args)

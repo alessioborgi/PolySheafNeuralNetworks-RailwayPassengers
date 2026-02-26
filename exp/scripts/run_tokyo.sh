@@ -16,6 +16,7 @@ python -m exp.run \
     --use_act=True \
     --model=DiagSheafPolynomial \
     --task=regression \
+    --inductive \
     --polynomial_type="ChebyshevType1" \
     --normalised=True \
     --deg_normalised=False \
