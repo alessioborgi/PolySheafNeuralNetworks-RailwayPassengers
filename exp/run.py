@@ -145,6 +145,7 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
         if data.y.dim() > 1:
             data.y = data.y[:, -1]
         data = get_fixed_splits(data, aget(args, "dataset"), fold)
+        print("data y shape:", data.y.shape)
             
         print(f"data splits for fold {fold}:")
         print(f"  train: {data.train_mask.sum().item()} samples")
@@ -176,6 +177,7 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     bad_counter = 0
 
     epochs = int(aget(args, "epochs", 200))
+    print("Running {} epochs".format(epochs))
     early_stopping = int(aget(args, "early_stopping", 50))
     stop_strategy = str(aget(args, "stop_strategy", "acc"))
 
@@ -200,6 +202,7 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
             best_val_acc = float(val_acc)
             best_val_loss = float(val_loss)
             test_acc = float(tmp_test_acc)
+            test_loss = float(tmp_test_loss)
             best_epoch = int(epoch)
             bad_counter = 0
         else:
@@ -506,7 +509,7 @@ if __name__ == "__main__":
         # For regression, output_dim = number of target columns (typically 1)
 
         # this is a bit hacky, specifically for the tokyo dataset, since inductive learning isn't built in by default, we use this workaround
-        if aget(args, "inductive", False):
+        if aget(args, "dataset") == "tokyo_railway":
             args.output_dim = 1
         else:
             args.output_dim = 1 if dataset[0].y.dim() == 1 else dataset[0].y.shape[1]
