@@ -8,6 +8,7 @@ import os
 import os.path as osp
 import numpy as np
 import torch
+from torch_geometric import data
 import torch_geometric.transforms as T
 from typing import Optional, Callable, List, Union, Dict, Any
 from torch_geometric.datasets import HeterophilousGraphDataset, WikiCS
@@ -159,6 +160,48 @@ def get_fixed_splits(data: Data, dataset_name: str, seed: int) -> Data:
 
     return data
 
+def get_inductive_split(data: Data, dataset_name: str):
+    dataset_key = _normalize_name(dataset_name)
+    if dataset_key == "tokyo_railway":
+        # For Tokyo Railway, we have pre-defined inductive splits based on time chunks.
+        # Each fold corresponds to a different chunk of time for training/validation/testing.
+        os.makedirs(SPLITS_DIR, exist_ok=True)
+        split_path = osp.join(SPLITS_DIR, f"{dataset_key}_split_inductive.npz")
+        n = data.x.size(1)
+
+        train_x_mask = np.zeros(n, dtype=bool)
+        val_x_mask   = np.zeros(n, dtype=bool)
+        test_x_mask  = np.zeros(n, dtype=bool)
+
+        train_y_mask = np.zeros(3, dtype=bool)
+        val_y_mask   = np.zeros(3, dtype=bool)
+        test_y_mask  = np.zeros(3, dtype=bool)
+
+        train_x_idx = np.concatenate([np.arange(0, 4), np.arange(6, n)])
+        val_x_idx = np.concatenate([np.arange(1, 5), np.arange(6, n)])
+        test_x_idx = np.arange(2, n)
+
+        train_x_mask[train_x_idx] = True
+        val_x_mask[val_x_idx]     = True
+        test_x_mask[test_x_idx]   = True
+
+        train_y_mask[0] = True
+        val_y_mask[1] = True
+        test_y_mask[2] = True
+
+        np.savez(split_path, train_x_mask=train_x_mask, val_x_mask=val_x_mask, test_x_mask=test_x_mask, train_y_mask=train_y_mask, val_y_mask=val_y_mask, test_y_mask=test_y_mask)
+
+    data.train_x_mask = torch.tensor(train_x_mask, dtype=torch.bool)
+    data.val_x_mask   = torch.tensor(val_x_mask, dtype=torch.bool)
+    data.test_x_mask  = torch.tensor(test_x_mask, dtype=torch.bool)
+    data.train_y_mask = torch.tensor(train_y_mask, dtype=torch.bool)
+    data.val_y_mask   = torch.tensor(val_y_mask, dtype=torch.bool)
+    data.test_y_mask  = torch.tensor(test_y_mask, dtype=torch.bool)
+    print(f"train x mask shape: {data.train_x_mask.shape}, train y mask shape: {data.train_y_mask.shape}")
+    print(f"val x mask shape: {data.val_x_mask.shape}, val y mask shape: {data.val_y_mask.shape}")
+    print(f"test x mask shape: {data.test_x_mask.shape}, test y mask shape: {data.test_y_mask.shape}")
+
+    return data
 
 def _pick_first(keys, container):
     for key in keys:
@@ -1221,7 +1264,7 @@ class TokyoRailway(InMemoryDataset):
         # Now, with masking to suit sheaf learning procedure:
         x = torch.tensor(survey_agg.loc[node_order][['2013', '2014', '2015', '2016', '2017', '2018']].to_numpy(), dtype=torch.float)
         x = torch.cat([x, operator_features, line_features], dim=1)  # Concatenate all features
-        y = torch.tensor(survey_agg.loc[node_order][['2019']].to_numpy(), dtype=torch.float)
+        y = torch.tensor(survey_agg.loc[node_order][['2017', '2018', '2019']].to_numpy(), dtype=torch.float)
         data = from_networkx(G)
         data.x = x
         data.y = y
@@ -1230,8 +1273,8 @@ class TokyoRailway(InMemoryDataset):
         print(f"Final data object: {data}")
         torch.save(self.collate([data]), self.processed_paths[0])
 
-# if __name__ == "__main__":
-#     # Example usage:
-#     dataset = TokyoRailway(root="datasets", name="tokyo_railway")
-#     print(dataset[0])
-#     print(dataset[0].x)
+if __name__ == "__main__":
+    # Example usage:
+    dataset = TokyoRailway(root="datasets", name="tokyo_railway")
+    print(dataset[0])
+    print(dataset[0].x)

@@ -25,7 +25,7 @@ from models.disc_models import (
     DiscreteDiagSheafDiffusion, DiscreteBundleSheafDiffusion, DiscreteGeneralSheafDiffusion,
     DiscreteDiagSheafDiffusionPolynomial, DiscreteBundleSheafDiffusionPolynomial, DiscreteGeneralSheafDiffusionPolynomial
 )
-from utils.heterophilic import get_dataset, get_synthetic_dataset, get_fixed_splits
+from utils.heterophilic import get_dataset, get_inductive_split, get_synthetic_dataset, get_fixed_splits
 
 # reproducibility utilities (we will use them ONLY in resource_analysis mode)
 from utils.reproducibility import set_reproducible, fold_seed, truthy
@@ -58,38 +58,70 @@ def normalize_device(dev):
 
 
 # ----------------------------- train / eval -----------------------------
-def train(model, optimizer, data, task="classification"):
+def train(model, optimizer, data, task="classification", inductive=False):
     model.train()
     optimizer.zero_grad()
-    out = model(data.x)[data.train_mask]
-    if task == "regression":
-        loss = F.l1_loss(out.squeeze(-1), data.y[data.train_mask].float())
+    if inductive:
+        # Column-mask: select input features, run model, compare against target column
+        x_in = data.x[:, data.train_x_mask]
+        out = model(x_in)
+        y_target = data.y[:, data.train_y_mask].squeeze(-1)
+        if task == "regression":
+            loss = F.l1_loss(out.squeeze(-1), y_target.float())
+        else:
+            loss = F.nll_loss(out, y_target)
     else:
-        loss = F.nll_loss(out, data.y[data.train_mask])
+        out = model(data.x)[data.train_mask]
+        if task == "regression":
+            loss = F.l1_loss(out.squeeze(-1), data.y[data.train_mask].float())
+        else:
+            loss = F.nll_loss(out, data.y[data.train_mask])
     loss.backward()
     optimizer.step()
     del out
 
 
-def test(model, data, task="classification"):
+def test(model, data, task="classification", inductive=False):
     model.eval()
     with torch.no_grad():
-        logits = model(data.x)
-        accs, losses, preds = [], [], []
-        for _, mask in data("train_mask", "val_mask", "test_mask"):
-            if task == "regression":
-                pred = logits[mask].squeeze(-1)
-                # Use negative MAE as "acc" so higher is better (consistent with early stopping)
-                mae = F.l1_loss(pred, data.y[mask].float())
-                acc = -mae.item()
-                loss = F.l1_loss(pred, data.y[mask].float())
-            else:
-                pred = logits[mask].max(1)[1]
-                acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
-                loss = F.nll_loss(logits[mask], data.y[mask])
-            preds.append(pred.detach().cpu())
-            accs.append(acc)
-            losses.append(loss.detach().cpu())
+        if inductive:
+            # Evaluate each temporal split by column-masking x and y
+            accs, losses, preds = [], [], []
+            x_masks = [data.train_x_mask, data.val_x_mask, data.test_x_mask]
+            y_masks = [data.train_y_mask, data.val_y_mask, data.test_y_mask]
+            for x_mask, y_mask in zip(x_masks, y_masks):
+                x_in = data.x[:, x_mask]
+                logits = model(x_in)
+                y_target = data.y[:, y_mask].squeeze(-1)
+                if task == "regression":
+                    pred = logits.squeeze(-1)
+                    mae = F.l1_loss(pred, y_target.float())
+                    acc = -mae.item()
+                    loss = mae
+                else:
+                    pred = logits.max(1)[1]
+                    acc = pred.eq(y_target).sum().item() / y_target.shape[0]
+                    loss = F.nll_loss(logits, y_target)
+                preds.append(pred.detach().cpu())
+                accs.append(acc)
+                losses.append(loss.detach().cpu())
+        else:
+            logits = model(data.x)
+            accs, losses, preds = [], [], []
+            for _, mask in data("train_mask", "val_mask", "test_mask"):
+                if task == "regression":
+                    pred = logits[mask].squeeze(-1)
+                    # Use negative MAE as "acc" so higher is better (consistent with early stopping)
+                    mae = F.l1_loss(pred, data.y[mask].float())
+                    acc = -mae.item()
+                    loss = F.l1_loss(pred, data.y[mask].float())
+                else:
+                    pred = logits[mask].max(1)[1]
+                    acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
+                    loss = F.nll_loss(logits[mask], data.y[mask])
+                preds.append(pred.detach().cpu())
+                accs.append(acc)
+                losses.append(loss.detach().cpu())
         return accs, preds, losses
 
 
@@ -104,12 +136,20 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
       - discrete debug prints identical pattern
       - fold summary logs: best_test_acc/best_val_acc/best_epoch (same keys)
     """
+    inductive_learning = bool(aget(args, "inductive", False))
     data = dataset[0]
-    data = get_fixed_splits(data, aget(args, "dataset"), fold)
-    print(f"data splits for fold {fold}:")
-    print(f"  train: {data.train_mask.sum().item()} samples")
-    print(f"  val: {data.val_mask.sum().item()} samples")
-    print(f"  test: {data.test_mask.sum().item()} samples")
+    if inductive_learning:
+        data = get_inductive_split(data, aget(args, "dataset"))
+        # input_dim = number of columns selected by the mask (same for all splits)
+        # args['input_dim'] = int(data.train_x_mask.sum().item())
+        # print(f"Constructed inductive splits. input_dim={data.train_x_mask.sum().item()}")
+    else:
+        data = get_fixed_splits(data, aget(args, "dataset"), fold)
+            
+        print(f"data splits for fold {fold}:")
+        print(f"  train: {data.train_mask.sum().item()} samples")
+        print(f"  val: {data.val_mask.sum().item()} samples")
+        print(f"  test: {data.test_mask.sum().item()} samples")
 
     data = data.to(aget(args, "device"))
 
@@ -141,8 +181,8 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
 
     for epoch in range(epochs):
         task = str(aget(args, "task", "classification"))
-        train(model, optimizer, data, task=task)
-        [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data, task=task)
+        train(model, optimizer, data, task=task, inductive=inductive_learning)
+        [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data, task=task, inductive=inductive_learning)
 
         # EXACTLY AS BEFORE: only fold 0, and with step=epoch
         if fold == 0:
@@ -458,10 +498,18 @@ if __name__ == "__main__":
     # ---------------- Enrich args ----------------
     args.sha = sha
     args.graph_size = dataset[0].x.size(0)
-    args.input_dim = dataset[0].x.shape[1]
+    if aget(args, "inductive", False):
+        args.input_dim = dataset[0].x.shape[1] - 2
+    else:
+        args.input_dim = dataset[0].x.shape[1]
     if args.task == "regression":
         # For regression, output_dim = number of target columns (typically 1)
-        args.output_dim = 1 if dataset[0].y.dim() == 1 else dataset[0].y.shape[1]
+
+        # this is a bit hacky, specifically for the tokyo dataset, since inductive learning isn't built in by default, we use this workaround
+        if aget(args, "inductive", False):
+            args.output_dim = 1
+        else:
+            args.output_dim = 1 if dataset[0].y.dim() == 1 else dataset[0].y.shape[1]
     else:
         try:
             args.output_dim = dataset.num_classes

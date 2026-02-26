@@ -79,6 +79,8 @@ def get_parser():
                         help="W&B project name. Defaults to an internal name if not set.")
     parser.add_argument('--task', type=str, choices=['classification', 'regression'], default='classification',
                         help="Task type: 'classification' (nll_loss + accuracy) or 'regression' (mse_loss + MAE).")
+    parser.add_argument('--inductive', action='store_true',
+                        help="Whether to use inductive splits (if supported by dataset, e.g. TokyoRailway).")
     parser.add_argument('--evectors', type=int, default=0,
                         help="Number of Laplacian PE eigenvectors to use.")
 
