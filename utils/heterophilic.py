@@ -190,6 +190,8 @@ def get_inductive_split(data: Data, dataset_name: str):
         test_y_mask[2] = True
 
         np.savez(split_path, train_x_mask=train_x_mask, val_x_mask=val_x_mask, test_x_mask=test_x_mask, train_y_mask=train_y_mask, val_y_mask=val_y_mask, test_y_mask=test_y_mask)
+    else:
+        raise ValueError(f"Inductive split not defined for dataset '{dataset_name}'.")
 
     data.train_x_mask = torch.tensor(train_x_mask, dtype=torch.bool)
     data.val_x_mask   = torch.tensor(val_x_mask, dtype=torch.bool)

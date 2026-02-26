@@ -140,10 +140,10 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     data = dataset[0]
     if inductive_learning:
         data = get_inductive_split(data, aget(args, "dataset"))
-        # input_dim = number of columns selected by the mask (same for all splits)
-        # args['input_dim'] = int(data.train_x_mask.sum().item())
-        # print(f"Constructed inductive splits. input_dim={data.train_x_mask.sum().item()}")
     else:
+        # For transductive, squeeze multi-column y to 1D (use last column = most recent year)
+        if data.y.dim() > 1:
+            data.y = data.y[:, -1]
         data = get_fixed_splits(data, aget(args, "dataset"), fold)
             
         print(f"data splits for fold {fold}:")
@@ -499,7 +499,7 @@ if __name__ == "__main__":
     args.sha = sha
     args.graph_size = dataset[0].x.size(0)
     if aget(args, "inductive", False):
-        args.input_dim = dataset[0].x.shape[1] - 2
+        args.input_dim = get_inductive_split(dataset[0], aget(args, "dataset")).train_x_mask.sum().item()
     else:
         args.input_dim = dataset[0].x.shape[1]
     if args.task == "regression":

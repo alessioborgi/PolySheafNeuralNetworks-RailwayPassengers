@@ -12,6 +12,8 @@ import random
 import argparse
 import os
 
+from exp.run import aget
+
 class GCN(nn.Module):
     def __init__(self, in_features, out_features, adjacency_matrix):
         super(GCN, self).__init__()
@@ -30,26 +32,50 @@ class GCN(nn.Module):
         x = self.layer_2(x)
         return x
     
-def train_with_masking(model, data, optimizer):
+def train_with_masking(model, data, optimizer, inductive=False):
         model.train()
         optimizer.zero_grad()
-        out = model(data.x)[data.train_mask]
-        loss = F.l1_loss(out.squeeze(-1), data.y[data.train_mask].float())
+        if inductive:
+            x_in = data.x[:, data.train_x_mask]
+            out = model(x_in)
+            y_target = data.y[:, data.train_y_mask].squeeze(-1)
+            loss = F.l1_loss(out.squeeze(-1), y_target.float())
+        else:
+            out = model(data.x)[data.train_mask]
+            loss = F.l1_loss(out.squeeze(-1), data.y[data.train_mask].float())
         loss.backward()
         optimizer.step()
         return loss
 
-def test_with_masking(model, data):
+def test_with_masking(model, data, inductive=False):
     model.eval()
     with torch.no_grad():
-        preds = model(data.x)
-        # Evaluate on test nodes
-        losses = []
-        for mask in [data.train_mask, data.val_mask, data.test_mask]:
-            pred = preds[mask].squeeze(-1)
-            loss = F.l1_loss(pred, data.y[mask].float()).item()
-            losses.append(loss)
-        return losses
+        if inductive:
+            x_in = data.x[:, data.train_x_mask]
+            out = model(x_in)
+            y_target = data.y[:, data.train_y_mask].squeeze(-1)
+            train_loss = F.l1_loss(out.squeeze(-1), y_target.float()).item()
+            
+            x_in_val = data.x[:, data.val_x_mask]
+            out_val = model(x_in_val)
+            y_target_val = data.y[:, data.val_y_mask].squeeze(-1)
+            val_loss = F.l1_loss(out_val.squeeze(-1), y_target_val.float()).item()
+            
+            x_in_test = data.x[:, data.test_x_mask]
+            out_test = model(x_in_test)
+            y_target_test = data.y[:, data.test_y_mask].squeeze(-1)
+            test_loss = F.l1_loss(out_test.squeeze(-1), y_target_test.float()).item()
+            
+            return train_loss, val_loss, test_loss
+        else:
+            preds = model(data.x)
+            # Evaluate on test nodes
+            losses = []
+            for mask in [data.train_mask, data.val_mask, data.test_mask]:
+                pred = preds[mask].squeeze(-1)
+                loss = F.l1_loss(pred, data.y[mask].float()).item()
+                losses.append(loss)
+            return losses
     
 def load_data():
     data_dir = os.path.join(os.path.dirname(__file__), "raw/")
@@ -131,17 +157,38 @@ def main(args):
     path = os.path.join(os.path.dirname(__file__), "processed/data.pt")
     data = torch.load(path, weights_only=False)[0]
     root = os.path.join(os.path.dirname(__file__), "..", "..")
-    split_path = os.path.join(root, "splits", "tokyo_railway_split_0.6_0.2_0.npz")
+    if aget(args, "inductive", False):
+        split_path = os.path.join(root, "splits", "tokyo_railway_split_inductive.npz")
 
-    with np.load(split_path) as f:
-        train_mask = f["train_mask"]
-        val_mask   = f["val_mask"]
-        test_mask  = f["test_mask"]
+        with np.load(split_path) as f:
+            train_x_mask = f["train_x_mask"]
+            train_y_mask = f["train_y_mask"]
+            val_x_mask   = f["val_x_mask"]
+            val_y_mask   = f["val_y_mask"]
+            test_x_mask  = f["test_x_mask"]
+            test_y_mask  = f["test_y_mask"]
 
-    data.train_mask = torch.tensor(train_mask, dtype=torch.bool)
-    data.val_mask = torch.tensor(val_mask, dtype=torch.bool)
-    data.test_mask = torch.tensor(test_mask, dtype=torch.bool)
-    assert len(data.y[data.train_mask].shape) == 1, "Expected data.y[data.train_mask] to be 1D after squeezing"
+        data.train_x_mask = torch.tensor(train_x_mask, dtype=torch.bool)
+        data.train_y_mask = torch.tensor(train_y_mask, dtype=torch.bool)
+        data.val_x_mask = torch.tensor(val_x_mask, dtype=torch.bool)
+        data.val_y_mask = torch.tensor(val_y_mask, dtype=torch.bool)
+        data.test_x_mask = torch.tensor(test_x_mask, dtype=torch.bool)
+        data.test_y_mask = torch.tensor(test_y_mask, dtype=torch.bool)
+    else:
+        # in the transductive case, our predictions must only be for the last year of data, i.e. the last column
+        if data.y.dim() > 1:
+            data.y = data.y[:, -1].squeeze(-1)  # make data.y 1D by taking only the last column and squeezing
+        split_path = os.path.join(root, "splits", "tokyo_railway_split_0.6_0.2_0.npz")
+
+        with np.load(split_path) as f:
+            train_mask = f["train_mask"]
+            val_mask   = f["val_mask"]
+            test_mask  = f["test_mask"]
+
+        data.train_mask = torch.tensor(train_mask, dtype=torch.bool)
+        data.val_mask = torch.tensor(val_mask, dtype=torch.bool)
+        data.test_mask = torch.tensor(test_mask, dtype=torch.bool)
+        assert len(data.y[data.train_mask].shape) == 1, "Expected data.y[data.train_mask] to be 1D after squeezing"
 
 
     # ------------------------ LOAD DATA FOR COMPLEX ADJACENCY DETAILS ------------------
@@ -275,19 +322,21 @@ def main(args):
     else:
         raise ValueError(f"Unknown adjacency type: {adjacency_type}")
     
-    model = GCN(in_features=data.x.shape[1], out_features=1, adjacency_matrix=adjacency_matrix)
+    inductive = aget(args, "inductive", False)
+    in_features = data.train_x_mask.sum().item() if inductive else data.x.shape[1]
+    model = GCN(in_features=in_features, out_features=1, adjacency_matrix=adjacency_matrix)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     for epoch in range(500):
-        loss = train_with_masking(model, data, optimizer)
+        loss = train_with_masking(model, data, optimizer, inductive=inductive)
         if (epoch + 1) % 20 == 0:
-            train_loss, val_loss, test_loss = test_with_masking(model, data)
+            train_loss, val_loss, test_loss = test_with_masking(model, data, inductive=inductive)
             print(f"Epoch {epoch+1}, Train Loss: {train_loss:.10f}, Val Loss: {val_loss:.10f}, Test Loss: {test_loss:.10f}")
     
     # rescale losses back to original scale (undo normalization) for interpretability:
-    train_loss, val_loss, test_loss = test_with_masking(model, data)
-    original_train_loss = train_loss * (global_max - global_min) + global_min
-    original_val_loss = val_loss * (global_max - global_min) + global_min
-    original_test_loss = test_loss * (global_max - global_min) + global_min
+    train_loss, val_loss, test_loss = test_with_masking(model, data, inductive=inductive)
+    original_train_loss = train_loss * (global_max - global_min) #+ global_min
+    original_val_loss = val_loss * (global_max - global_min) #+ global_min
+    original_test_loss = test_loss * (global_max - global_min) #+ global_min
     print(f"Final Train Loss (rescaled): {original_train_loss:.10f}, Val Loss (rescaled): {original_val_loss:.10f}, Test Loss (rescaled): {original_test_loss:.10f}")
 
 if __name__ == "__main__":
@@ -295,7 +344,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", action="store_true", help="Run training")
     parser.add_argument("--test", action="store_true", help="Run testing")
-    parser.add_argument("--adjacency", type=str, default="conn", help="Type of adjacency matrix to use")
+    parser.add_argument("--adjacency", type=str, default="con", help="Type of adjacency matrix to use")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducibility")
+    parser.add_argument("--inductive", action="store_true", help="Whether to use inductive learning setting (with column masking) instead of transductive")
     args = parser.parse_args()
     main(args)
