@@ -509,7 +509,7 @@ if __name__ == "__main__":
         # For regression, output_dim = number of target columns (typically 1)
 
         # this is a bit hacky, specifically for the tokyo dataset, since inductive learning isn't built in by default, we use this workaround
-        if aget(args, "dataset") == "tokyo_railway":
+        if aget(args, "dataset") == "tokyo_railway": # 
             args.output_dim = 1
         else:
             args.output_dim = 1 if dataset[0].y.dim() == 1 else dataset[0].y.shape[1]
