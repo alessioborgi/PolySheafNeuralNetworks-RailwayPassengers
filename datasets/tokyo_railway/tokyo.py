@@ -337,9 +337,9 @@ def main(args):
     
     # rescale losses back to original scale (undo normalization) for interpretability:
     train_loss, val_loss, test_loss = test_with_masking(model, data, inductive=inductive)
-    original_train_loss = train_loss * (global_max - global_min) #+ global_min
-    original_val_loss = val_loss * (global_max - global_min) #+ global_min
-    original_test_loss = test_loss * (global_max - global_min) #+ global_min
+    original_train_loss = train_loss * (global_max - global_min) # don't add back global_min, we just need to scale back up
+    original_val_loss = val_loss * (global_max - global_min)
+    original_test_loss = test_loss * (global_max - global_min)
     print(f"Final Train Loss (rescaled): {original_train_loss:.10f}, Val Loss (rescaled): {original_val_loss:.10f}, Test Loss (rescaled): {original_test_loss:.10f}")
     return original_train_loss, original_val_loss, original_test_loss, train_loss, val_loss, test_loss
 
