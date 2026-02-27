@@ -80,6 +80,7 @@ def get_fixed_splits(data: Data, dataset_name: str, seed: int) -> Data:
 
     # (1) Built-in k-fold masks on the Data object
     if hasattr(data, "train_mask") and data.train_mask is not None:
+        print("data has train mask therefore we do some random splits")
         if torch.is_tensor(data.train_mask) and data.train_mask.dim() == 2:
             # Masks can be [num_nodes, K] or [K, num_nodes] depending on dataset.
             if data.train_mask.size(0) == data.num_nodes:
@@ -117,12 +118,44 @@ def get_fixed_splits(data: Data, dataset_name: str, seed: int) -> Data:
     os.makedirs(SPLITS_DIR, exist_ok=True)
     split_path = osp.join(SPLITS_DIR, f"{dataset_key}_split_0.6_0.2_{seed}.npz")
 
+    if dataset_key in {"tokyo_railway"}:
+        print("randomized splits successfully")
+        # want to randomize splits
+        n = data.num_nodes
+        rng = np.random.RandomState(seed)
+        perm = rng.permutation(n)
+
+        n_train = int(0.6 * n)
+        n_val   = int(0.2 * n)
+
+        train_idx = perm[:n_train]
+        val_idx   = perm[n_train:n_train + n_val]
+        test_idx  = perm[n_train + n_val:]
+
+        train_mask = np.zeros(n, dtype=bool)
+        val_mask   = np.zeros(n, dtype=bool)
+        test_mask  = np.zeros(n, dtype=bool)
+
+        train_mask[train_idx] = True
+        val_mask[val_idx]     = True
+        test_mask[test_idx]   = True
+
+        data.train_mask = torch.tensor(train_mask, dtype=torch.bool)
+        data.val_mask   = torch.tensor(val_mask, dtype=torch.bool)
+        data.test_mask  = torch.tensor(test_mask, dtype=torch.bool)
+
+        np.savez(split_path, train_mask=train_mask, val_mask=val_mask, test_mask=test_mask)
+        
+        return data
+
     try:
         with np.load(split_path) as f:
+            print(f"Loaded existing split from {split_path}")
             train_mask = f["train_mask"]
             val_mask   = f["val_mask"]
             test_mask  = f["test_mask"]
     except FileNotFoundError:
+        print(f"No existing split found at {split_path}. Creating new random split with seed {seed} and saving it.")
         # Create and save deterministic random split
         n = data.num_nodes
         rng = np.random.RandomState(seed)

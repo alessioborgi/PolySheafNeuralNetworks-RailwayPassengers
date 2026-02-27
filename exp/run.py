@@ -238,7 +238,13 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
         "best_epoch": int(best_epoch),
     })
 
-    keep_running = float(test_acc) >= float(aget(args, "min_acc", 0.0))
+    min_acc_threshold = float(aget(args, "min_acc", 0.0))
+    # For regression, "test_acc" is negative MAE, so it's always < 0.
+    # Skip the min_acc gate entirely for regression tasks.
+    if str(aget(args, "task", "classification")) == "regression":
+        keep_running = True
+    else:
+        keep_running = float(test_acc) >= min_acc_threshold
     return float(test_acc), float(best_val_acc), keep_running
 
 
@@ -576,6 +582,7 @@ if __name__ == "__main__":
 
     for fold in tqdm(range(int(args.folds))):
         if not resource_analysis:
+            print("running with fold:", fold)
             test_acc, best_val_acc, keep_running = run_exp_classic(wandb.config, dataset, model_cls, fold)
             results.append([test_acc, best_val_acc])
             if not keep_running:

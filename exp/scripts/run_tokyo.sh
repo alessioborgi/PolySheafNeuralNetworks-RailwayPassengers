@@ -16,7 +16,6 @@ python -m exp.run \
     --use_act=True \
     --model=DiagSheafPolynomial \
     --task=regression \
-    --inductive \
     --polynomial_type="ChebyshevType1" \
     --normalised=True \
     --deg_normalised=False \
@@ -25,7 +24,7 @@ python -m exp.run \
     --chebyshev_layers_K=15 \
     --early_stopping=200 \
     --weight_decay=0.005 \
-    --folds=10 \
+    --folds=3 \
     --cuda=0 \
     --entity="${ENTITY}" \
     --wandb_project="Tokyo_Railway" \

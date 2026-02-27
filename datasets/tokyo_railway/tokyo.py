@@ -267,7 +267,8 @@ def main(args):
         # in the transductive case, our predictions must only be for the last year of data, i.e. the last column
         if data.y.dim() > 1:
             data.y = data.y[:, -1].squeeze(-1)  # make data.y 1D by taking only the last column and squeezing
-        split_path = os.path.join(root, "splits", "tokyo_railway_split_0.6_0.2_0.npz")
+        split_path = os.path.join(root, "splits", f"tokyo_railway_split_0.6_0.2_{args.seed}.npz")
+        print(f"using split path with seed {args.seed}: {split_path}")
 
         with np.load(split_path) as f:
             train_mask = f["train_mask"]
@@ -452,32 +453,54 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="gcn", choices=["gcn", "gat"], help="Model architecture to use")
     parser.add_argument("--n_heads", type=int, default=2, help="Number of attention heads for GAT")
     parser.add_argument("--dropout", type=float, default=0.6, help="Dropout rate for GAT")
-    parser.add_argument("--sweep", action="store_true", help="Run all 7 adjacency types and write results to CSV")
+    parser.add_argument("--sweep", action="store_true", help="Run all 7 adjacency types and write results to CSV, with an average over n random seeds")
+    parser.add_argument("--sweep_seeds", type=int, default=3, help="Number of random seeds to use for sweep (only if --sweep is set)")
     args = parser.parse_args()
 
     if args.sweep:
         import csv
         adjacency_types = ["con", "dis", "cor", "d_con", "d_cor", "cor_con", "d_cor_con"]
+        seeds = list(range(args.sweep_seeds))
         mode = "inductive" if args.inductive else "transductive"
         out_path = os.path.join(os.path.dirname(__file__), f"{args.model}_sweep_{mode}_seed{args.seed}_sigma{args.sigma}.csv")
         rows = []
         for adj_type in adjacency_types:
-            print(f"\n{'='*60}")
-            print(f"Running adjacency type: {adj_type}")
-            print(f"{'='*60}")
-            args.adjacency = adj_type
-            train_loss, val_loss, test_loss, normalized_train_loss, normalized_val_loss, normalized_test_loss = main(args)
+            train_losses = []
+            val_losses = []
+            test_losses = []
+            normalized_train_losses = []
+            normalized_val_losses = []
+            normalized_test_losses = []
+            for seed in seeds:
+                args.seed = seed
+                print(f"\n{'='*60}")
+                print(f"Running adjacency type: {adj_type}, seed: {seed}")
+                print(f"{'='*60}")
+                args.adjacency = adj_type
+                train_loss, val_loss, test_loss, normalized_train_loss, normalized_val_loss, normalized_test_loss = main(args)
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                test_losses.append(test_loss)
+                normalized_train_losses.append(normalized_train_loss)
+                normalized_val_losses.append(normalized_val_loss)
+                normalized_test_losses.append(normalized_test_loss)
             rows.append({
                 "adjacency": adj_type,
                 "mode": mode,
                 "seed": args.seed,
                 "sigma": args.sigma,
-                "train_mae": f"{train_loss:.4f}",
-                "val_mae": f"{val_loss:.4f}",
-                "test_mae": f"{test_loss:.4f}",
-                "normalized_train_mae": f"{normalized_train_loss:.4f}",
-                "normalized_val_mae": f"{normalized_val_loss:.4f}",
-                "normalized_test_mae": f"{normalized_test_loss:.4f}",
+                "train_mae": f"{np.mean(train_losses):.4f}",
+                "val_mae": f"{np.mean(val_losses):.4f}",
+                "test_mae": f"{np.mean(test_losses):.4f}",
+                "normalized_train_mae": f"{np.mean(normalized_train_losses):.4f}",
+                "normalized_val_mae": f"{np.mean(normalized_val_losses):.4f}",
+                "normalized_test_mae": f"{np.mean(normalized_test_losses):.4f}",
+                "train_mae_std": f"{np.std(train_losses):.4f}",
+                "val_mae_std": f"{np.std(val_losses):.4f}",
+                "test_mae_std": f"{np.std(test_losses):.4f}",
+                "normalized_train_mae_std": f"{np.std(normalized_train_losses):.4f}",
+                "normalized_val_mae_std": f"{np.std(normalized_val_losses):.4f}",
+                "normalized_test_mae_std": f"{np.std(normalized_test_losses):.4f}",
             })
         with open(out_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=rows[0].keys())
