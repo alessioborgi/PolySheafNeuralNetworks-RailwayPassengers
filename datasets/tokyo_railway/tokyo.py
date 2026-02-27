@@ -29,6 +29,7 @@ class GCN(nn.Module):
         x = torch.matmul(self.A_hat, x)
         x = self.layer_1(x)
         x = torch.relu(x)
+        x = torch.matmul(self.A_hat, x)
         x = self.layer_2(x)
         return x
 
@@ -393,7 +394,7 @@ def main(args):
         correlation_adjacency_matrix = covariance_matrix / np.outer(std_dev, std_dev)  # shape [N, N]
         correlation_adjacency_matrix = np.nan_to_num(correlation_adjacency_matrix)  # replace NaNs with 0 (in case of constant rows)
         correlation_adjacency_matrix = torch.tensor(correlation_adjacency_matrix, dtype=torch.float32)
-        return correlation_adjacency_matrix
+        return correlation_adjacency_matrix.fill_diagonal_(0)  # zero out diagonal to remove self-loops in correlation adjacency
     
     # ------------------------- TRAINING ------------------
     default_adjacency_matrix = to_dense_adj(data.edge_index, max_num_nodes=data.num_nodes)[0]
@@ -403,7 +404,7 @@ def main(args):
     elif adjacency_type == "dis":
         adjacency_matrix = get_distance_adjacency_matrix()
     elif adjacency_type == "cor":
-        adjacency_matrix = get_correlation_adjacency_matrix().fill_diagonal_(0)  # zero out diagonal to remove self-loops in correlation adjacency
+        adjacency_matrix = get_correlation_adjacency_matrix()
     elif adjacency_type == "d_con":
         adjacency_matrix = torch.mul(get_distance_adjacency_matrix(), default_adjacency_matrix)
     elif adjacency_type == "d_cor":
