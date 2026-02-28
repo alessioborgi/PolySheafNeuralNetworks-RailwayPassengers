@@ -76,12 +76,12 @@ class DenseGATLayer(nn.Module):
         e = e_left + e_right.T       # [N, N] via broadcast
         e = self.leaky_relu(e)
 
+        # Valued masking: scale attention by continuous edge weights
+        e = e * self.adj_values
+
         # Mask only true structural zeros (where A_ij == 0) for softmax stability
         e = e.masked_fill(self.adj_mask == 0, float('-inf'))
         attention = F.softmax(e, dim=1)           # [N, N]
-
-        # Valued masking: scale attention by continuous edge weights
-        attention = attention * self.adj_values    # [N, N]
 
         attention = self.dropout(attention)
 
