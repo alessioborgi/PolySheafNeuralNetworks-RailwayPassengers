@@ -83,6 +83,8 @@ def get_parser():
                         help="Whether to use inductive splits (if supported by dataset, e.g. TokyoRailway).")
     parser.add_argument('--evectors', type=int, default=0,
                         help="Number of Laplacian PE eigenvectors to use.")
+    parser.add_argument('--norm', type=str, default='global', choices=['global', 'row'],
+                        help="Normalization mode for Tokyo Railway: 'global' (single min/max) or 'row' (per-station min/max)")
 
     # ---------- Polynomial filter args (generalized) ----------
     parser.add_argument("--lambda_max_choice", choices=["analytic", "iterative"], default="analytic",

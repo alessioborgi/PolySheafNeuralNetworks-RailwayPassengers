@@ -25,6 +25,8 @@ from models.disc_models import (
     DiscreteDiagSheafDiffusion, DiscreteBundleSheafDiffusion, DiscreteGeneralSheafDiffusion,
     DiscreteDiagSheafDiffusionPolynomial, DiscreteBundleSheafDiffusionPolynomial, DiscreteGeneralSheafDiffusionPolynomial
 )
+import pandas as pd
+from definitions import ROOT_DIR
 from utils.heterophilic import get_dataset, get_inductive_split, get_synthetic_dataset, get_fixed_splits
 
 # reproducibility utilities (we will use them ONLY in resource_analysis mode)
@@ -55,6 +57,63 @@ def normalize_device(dev):
     if isinstance(dev, torch.device):
         return dev
     return torch.device(str(dev))
+
+
+# ----------------------------- Tokyo row normalization helpers ----------
+def _apply_tokyo_row_norm(data, global_min, global_max):
+    """Undo global normalization baked into data.pt and apply per-station (row) normalization."""
+    N_SURVEY = 6  # first 6 cols of data.x are survey years 2013-2018
+    scale = global_max - global_min
+    raw_x = data.x[:, :N_SURVEY] * scale + global_min
+    raw_y = data.y * scale + global_min
+    if data.y.dim() == 1:
+        all_years = torch.cat([raw_x, raw_y.unsqueeze(1)], dim=1)
+    else:
+        all_years = torch.cat([raw_x, raw_y], dim=1)
+    node_row_mins = all_years.min(dim=1).values
+    node_row_scales = all_years.max(dim=1).values - node_row_mins
+    node_row_scales = torch.where(node_row_scales == 0, torch.ones_like(node_row_scales), node_row_scales)
+    data.x = data.x.clone()
+    data.x[:, :N_SURVEY] = (raw_x - node_row_mins.unsqueeze(1)) / node_row_scales.unsqueeze(1)
+    if data.y.dim() == 1:
+        data.y = (raw_y - node_row_mins) / node_row_scales
+    else:
+        data.y = (raw_y - node_row_mins.unsqueeze(1)) / node_row_scales.unsqueeze(1)
+    data.node_row_scales = node_row_scales
+    return data
+
+
+def rescaled_test(model, data, inductive=False, norm_mode="global",
+                  global_scale=1.0, node_row_scales=None):
+    """Compute MAE rescaled back to original passenger count units."""
+    model.eval()
+    with torch.no_grad():
+        if inductive:
+            results = []
+            for x_mask, y_mask in zip(
+                [data.train_x_mask, data.val_x_mask, data.test_x_mask],
+                [data.train_y_mask, data.val_y_mask, data.test_y_mask],
+            ):
+                pred = model(data.x[:, x_mask]).squeeze(-1)
+                y_target = data.y[:, y_mask].squeeze(-1)
+                abs_err = torch.abs(pred - y_target)
+                if norm_mode == "row" and node_row_scales is not None:
+                    mae = (abs_err * node_row_scales).mean().item()
+                else:
+                    mae = abs_err.mean().item() * global_scale
+                results.append(mae)
+            return results
+        else:
+            pred = model(data.x).squeeze(-1)
+            results = []
+            for mask in [data.train_mask, data.val_mask, data.test_mask]:
+                abs_err = torch.abs(pred[mask] - data.y[mask])
+                if norm_mode == "row" and node_row_scales is not None:
+                    mae = (abs_err * node_row_scales[mask]).mean().item()
+                else:
+                    mae = abs_err.mean().item() * global_scale
+                results.append(mae)
+            return results
 
 
 # ----------------------------- train / eval -----------------------------
@@ -128,16 +187,25 @@ def test(model, data, task="classification", inductive=False):
 # =====================================================================
 #  CLASSIC FOLD RUN (matches your old behavior when resource_analysis=False)
 # =====================================================================
-def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, bool]:
+def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, bool, float]:
     """
     This is intentionally kept as close as possible to your original script:
       - no per-fold reproducibility changes here (relies on global seeding in main)
       - only fold 0 logs per-epoch with step=epoch
       - discrete debug prints identical pattern
       - fold summary logs: best_test_acc/best_val_acc/best_epoch (same keys)
+    Returns (test_acc, best_val_acc, keep_running, fold_time_s).
     """
+    t_fold_start = time.perf_counter()
     inductive_learning = bool(aget(args, "inductive", False))
     data = dataset[0]
+
+    # Apply Tokyo row normalization if requested
+    is_tokyo = aget(args, "dataset") == "tokyo_railway"
+    if is_tokyo and aget(args, "norm", "global") == "row":
+        data = data.clone()
+        data = _apply_tokyo_row_norm(data, aget(args, "tokyo_global_min"), aget(args, "tokyo_global_max"))
+
     if inductive_learning:
         data = get_inductive_split(data, aget(args, "dataset"))
     else:
@@ -176,6 +244,10 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     best_epoch = 0
     bad_counter = 0
 
+    # Track rescaled metrics for Tokyo Railway regression
+    is_tokyo_regression = (str(aget(args, "task", "classification")) == "regression" and is_tokyo)
+    best_rescaled = None
+
     epochs = int(aget(args, "epochs", 200))
     print("Running {} epochs".format(epochs))
     early_stopping = int(aget(args, "early_stopping", 50))
@@ -205,6 +277,14 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
             test_loss = float(tmp_test_loss)
             best_epoch = int(epoch)
             bad_counter = 0
+            # Capture rescaled MAE at best-epoch for Tokyo Railway
+            if is_tokyo_regression:
+                _norm = str(aget(args, "norm", "global"))
+                _gscale = float(aget(args, "tokyo_global_max") - aget(args, "tokyo_global_min"))
+                _nrs = getattr(data, "node_row_scales", None)
+                best_rescaled = rescaled_test(
+                    model, data, inductive=inductive_learning,
+                    norm_mode=_norm, global_scale=_gscale, node_row_scales=_nrs)
         else:
             bad_counter += 1
 
@@ -238,6 +318,18 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
         "best_epoch": int(best_epoch),
     })
 
+    # Log rescaled metrics for Tokyo Railway regression
+    if best_rescaled is not None:
+        wandb.log({
+            f"fold{fold}_rescaled_train_mae": best_rescaled[0],
+            f"fold{fold}_rescaled_val_mae": best_rescaled[1],
+            f"fold{fold}_rescaled_test_mae": best_rescaled[2],
+        })
+
+    fold_time_s = time.perf_counter() - t_fold_start
+    print(f"Fold {fold} wall-clock time: {fold_time_s:.2f}s")
+    wandb.log({f"fold{fold}_time_s": float(fold_time_s)})
+
     min_acc_threshold = float(aget(args, "min_acc", 0.0))
     # For regression, "test_acc" is negative MAE, so it's always < 0.
     # Skip the min_acc gate entirely for regression tasks.
@@ -245,7 +337,7 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
         keep_running = True
     else:
         keep_running = float(test_acc) >= min_acc_threshold
-    return float(test_acc), float(best_val_acc), keep_running
+    return float(test_acc), float(best_val_acc), keep_running, fold_time_s
 
 
 # =====================================================================
@@ -504,6 +596,16 @@ if __name__ == "__main__":
     if args.evectors > 0:
         dataset = append_top_k_evectors(dataset, args.evectors)
 
+    # ---- Tokyo Railway normalization stats ----
+    if aget(args, "dataset") == "tokyo_railway":
+        _raw_csv = os.path.join(ROOT_DIR, "datasets", "tokyo_railway", "raw",
+                                "pass_survey_tokyov1109.csv")
+        _survey_df = pd.read_csv(_raw_csv)
+        _year_cols = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+        args.tokyo_global_min = float(_survey_df[_year_cols].min().min())
+        args.tokyo_global_max = float(_survey_df[_year_cols].max().max())
+        del _survey_df, _year_cols, _raw_csv
+
     # ---------------- Enrich args ----------------
     args.sha = sha
     args.graph_size = dataset[0].x.size(0)
@@ -579,12 +681,14 @@ if __name__ == "__main__":
 
     results: List[List[float]] = []
     fold_summaries: List[Dict[str, Any]] = []
+    fold_times: List[float] = []
 
     for fold in tqdm(range(int(args.folds))):
         if not resource_analysis:
             print("running with fold:", fold)
-            test_acc, best_val_acc, keep_running = run_exp_classic(wandb.config, dataset, model_cls, fold)
+            test_acc, best_val_acc, keep_running, fold_time_s = run_exp_classic(wandb.config, dataset, model_cls, fold)
             results.append([test_acc, best_val_acc])
+            fold_times.append(fold_time_s)
             if not keep_running:
                 break
         else:
@@ -600,6 +704,15 @@ if __name__ == "__main__":
 
     wandb_results = {"test_acc": float(test_acc_mean), "val_acc": float(val_acc_mean), "test_acc_std": float(test_acc_std)}
     wandb.log(wandb_results)
+
+    # Log average and std of fold wall-clock times (classic mode)
+    if fold_times:
+        avg_fold_time = float(np.mean(fold_times))
+        std_fold_time = float(np.std(fold_times))
+        wandb.log({"avg_fold_time_s": avg_fold_time, "std_fold_time_s": std_fold_time})
+        wandb.run.summary["avg_fold_time_s"] = avg_fold_time
+        wandb.run.summary["std_fold_time_s"] = std_fold_time
+        print(f"Fold time: {avg_fold_time:.2f}s +/- {std_fold_time:.2f}s")
 
     # In resource mode, also log cross-fold FLOPs/time aggregates (extra keys)
     if resource_analysis:

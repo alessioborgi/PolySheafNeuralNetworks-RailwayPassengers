@@ -8,6 +8,7 @@ import pandas as pd
 import networkx as nx
 
 import random
+import time
 
 import argparse
 import os
@@ -165,6 +166,33 @@ def test_with_masking(model, data, inductive=False):
                 loss = F.l1_loss(pred, data.y[mask].float()).item()
                 losses.append(loss)
             return losses
+
+def rescaled_test_with_masking(model, data, node_scales, inductive=False):
+    """Compute per-node rescaled MAE: mean(|pred_i - y_i| * scale_i).
+    node_scales: 1-D tensor [N] with per-node (max - min) for undoing normalization."""
+    model.eval()
+    with torch.no_grad():
+        if inductive:
+            out = model(data.x[:, data.train_x_mask]).squeeze(-1)
+            y = data.y[:, data.train_y_mask].squeeze(-1)
+            train_loss = (torch.abs(out - y) * node_scales).mean().item()
+
+            out_v = model(data.x[:, data.val_x_mask]).squeeze(-1)
+            y_v = data.y[:, data.val_y_mask].squeeze(-1)
+            val_loss = (torch.abs(out_v - y_v) * node_scales).mean().item()
+
+            out_t = model(data.x[:, data.test_x_mask]).squeeze(-1)
+            y_t = data.y[:, data.test_y_mask].squeeze(-1)
+            test_loss = (torch.abs(out_t - y_t) * node_scales).mean().item()
+
+            return train_loss, val_loss, test_loss
+        else:
+            preds = model(data.x).squeeze(-1)
+            losses = []
+            for mask in [data.train_mask, data.val_mask, data.test_mask]:
+                loss = (torch.abs(preds[mask] - data.y[mask]) * node_scales[mask]).mean().item()
+                losses.append(loss)
+            return losses
     
 def load_data():
     data_dir = os.path.join(os.path.dirname(__file__), "raw/")
@@ -302,19 +330,47 @@ def main(args):
 
     # max-min normalize passenger counts:
     year_cols = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+    norm_mode = aget(args, "norm", "global")
 
-    # normalization with global values:
+    # Always compute global stats (needed to undo data.pt's baked-in global normalization)
     global_min = matching_passenger_survey_pd[year_cols].min().min()
     global_max = matching_passenger_survey_pd[year_cols].max().max()
-    for year in year_cols:
-        matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - global_min) / (global_max - global_min)
 
-    # COMMENTED OUT FOR EXPERIMENTATION:
-    # normalization with row values: 
-    # row_mins = matching_passenger_survey_pd[year_cols].min(axis=1)
-    # row_maxs = matching_passenger_survey_pd[year_cols].max(axis=1)
-    # for year in year_cols:
-    #     matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - row_mins) / (row_maxs - row_mins)
+    if norm_mode == "row":
+        # Row (per-station) normalization for adjacency matrix computation
+        row_mins = matching_passenger_survey_pd[year_cols].min(axis=1)
+        row_maxs = matching_passenger_survey_pd[year_cols].max(axis=1)
+        row_range = row_maxs - row_mins
+        row_range = row_range.replace(0, 1)  # avoid div by zero for constant rows
+        for year in year_cols:
+            matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - row_mins) / row_range
+    else:
+        # Global normalization (default)
+        for year in year_cols:
+            matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - global_min) / (global_max - global_min)
+
+    # Re-normalize data.x and data.y when using row normalization
+    # (data.pt was saved with global normalization baked in)
+    if norm_mode == "row":
+        N_SURVEY = 6  # first 6 cols of data.x are survey years 2013-2018
+        raw_survey_x = data.x[:, :N_SURVEY] * (global_max - global_min) + global_min
+        if data.y.dim() == 1:
+            raw_y = data.y * (global_max - global_min) + global_min
+            all_years = torch.cat([raw_survey_x, raw_y.unsqueeze(1)], dim=1)
+        else:
+            raw_y = data.y * (global_max - global_min) + global_min
+            all_years = torch.cat([raw_survey_x, raw_y], dim=1)
+        node_row_mins = all_years.min(dim=1).values
+        node_row_scales = all_years.max(dim=1).values - node_row_mins
+        node_row_scales = torch.where(node_row_scales == 0, torch.ones_like(node_row_scales), node_row_scales)
+
+        data.x[:, :N_SURVEY] = (raw_survey_x - node_row_mins.unsqueeze(1)) / node_row_scales.unsqueeze(1)
+        if data.y.dim() == 1:
+            data.y = (raw_y - node_row_mins) / node_row_scales
+        else:
+            data.y = (raw_y - node_row_mins.unsqueeze(1)) / node_row_scales.unsqueeze(1)
+    else:
+        node_row_scales = None
 
     # and now we need to make sure nodes in the passenger survey match up with nodes in the connection data
     # the passenger_survey_pd only has nodes that are in the station_list_pd, so we can just filter the station_list_pd to only include those nodes
@@ -430,19 +486,26 @@ def main(args):
     else:
         model = GCN(in_features=in_features, out_features=1, adjacency_matrix=adjacency_matrix)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    t_train_start = time.perf_counter()
     for epoch in range(500):
         loss = train_with_masking(model, data, optimizer, inductive=inductive)
         if (epoch + 1) % 20 == 0:
             train_loss, val_loss, test_loss = test_with_masking(model, data, inductive=inductive)
             print(f"Epoch {epoch+1}, Train Loss: {train_loss:.10f}, Val Loss: {val_loss:.10f}, Test Loss: {test_loss:.10f}")
+    train_time_s = time.perf_counter() - t_train_start
+    print(f"Training wall-clock time: {train_time_s:.2f}s")
     
     # rescale losses back to original scale (undo normalization) for interpretability:
     train_loss, val_loss, test_loss = test_with_masking(model, data, inductive=inductive)
-    original_train_loss = train_loss * (global_max - global_min) # don't add back global_min, we just need to scale back up
-    original_val_loss = val_loss * (global_max - global_min)
-    original_test_loss = test_loss * (global_max - global_min)
+    if norm_mode == "row":
+        original_train_loss, original_val_loss, original_test_loss = rescaled_test_with_masking(
+            model, data, node_row_scales, inductive=inductive)
+    else:
+        original_train_loss = train_loss * (global_max - global_min)
+        original_val_loss = val_loss * (global_max - global_min)
+        original_test_loss = test_loss * (global_max - global_min)
     print(f"Final Train Loss (rescaled): {original_train_loss:.10f}, Val Loss (rescaled): {original_val_loss:.10f}, Test Loss (rescaled): {original_test_loss:.10f}")
-    return original_train_loss, original_val_loss, original_test_loss, train_loss, val_loss, test_loss
+    return original_train_loss, original_val_loss, original_test_loss, train_loss, val_loss, test_loss, train_time_s
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -453,6 +516,8 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="gcn", choices=["gcn", "gat"], help="Model architecture to use")
     parser.add_argument("--n_heads", type=int, default=2, help="Number of attention heads for GAT")
     parser.add_argument("--dropout", type=float, default=0.6, help="Dropout rate for GAT")
+    parser.add_argument("--norm", type=str, default="global", choices=["global", "row"],
+                        help="Normalization mode: 'global' (single min/max across all stations) or 'row' (per-station min/max)")
     parser.add_argument("--sweep", action="store_true", help="Run all 7 adjacency types and write results to CSV, with an average over n random seeds")
     parser.add_argument("--sweep_seeds", type=int, default=3, help="Number of random seeds to use for sweep (only if --sweep is set)")
     args = parser.parse_args()
@@ -462,7 +527,7 @@ if __name__ == "__main__":
         adjacency_types = ["con", "dis", "cor", "d_con", "d_cor", "cor_con", "d_cor_con"]
         seeds = list(range(args.sweep_seeds))
         mode = "inductive" if args.inductive else "transductive"
-        out_path = os.path.join(os.path.dirname(__file__), f"{args.model}_sweep_{mode}_seed{args.seed}_sigma{args.sigma}.csv")
+        out_path = os.path.join(os.path.dirname(__file__), f"{args.model}_sweep_{mode}_norm{args.norm}_seed{args.seed}_sigma{args.sigma}.csv")
         rows = []
         for adj_type in adjacency_types:
             train_losses = []
@@ -471,22 +536,25 @@ if __name__ == "__main__":
             normalized_train_losses = []
             normalized_val_losses = []
             normalized_test_losses = []
+            run_times = []
             for seed in seeds:
                 args.seed = seed
                 print(f"\n{'='*60}")
                 print(f"Running adjacency type: {adj_type}, seed: {seed}")
                 print(f"{'='*60}")
                 args.adjacency = adj_type
-                train_loss, val_loss, test_loss, normalized_train_loss, normalized_val_loss, normalized_test_loss = main(args)
+                train_loss, val_loss, test_loss, normalized_train_loss, normalized_val_loss, normalized_test_loss, train_time_s = main(args)
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
                 test_losses.append(test_loss)
                 normalized_train_losses.append(normalized_train_loss)
                 normalized_val_losses.append(normalized_val_loss)
                 normalized_test_losses.append(normalized_test_loss)
+                run_times.append(train_time_s)
             rows.append({
                 "adjacency": adj_type,
                 "mode": mode,
+                "norm": args.norm,
                 "seed": args.seed,
                 "sigma": args.sigma,
                 "train_mae": f"{np.mean(train_losses):.4f}",
@@ -501,7 +569,10 @@ if __name__ == "__main__":
                 "normalized_train_mae_std": f"{np.std(normalized_train_losses):.4f}",
                 "normalized_val_mae_std": f"{np.std(normalized_val_losses):.4f}",
                 "normalized_test_mae_std": f"{np.std(normalized_test_losses):.4f}",
+                "avg_train_time_s": f"{np.mean(run_times):.2f}",
+                "std_train_time_s": f"{np.std(run_times):.2f}",
             })
+            print(f"  {adj_type} avg training time: {np.mean(run_times):.2f}s +/- {np.std(run_times):.2f}s")
         with open(out_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=rows[0].keys())
             writer.writeheader()
