@@ -24,3 +24,5 @@ wandb/
 
 #vs code
 .vscode/
+
+checkpoints/

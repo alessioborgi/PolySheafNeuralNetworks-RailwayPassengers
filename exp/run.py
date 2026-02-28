@@ -2,6 +2,7 @@ import sys
 import os
 import random
 import time
+from collections import OrderedDict
 from typing import List, Dict, Any, Tuple, Optional
 
 import torch
@@ -258,6 +259,7 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     is_tokyo_regression = (str(aget(args, "task", "classification")) == "regression" and is_tokyo)
     best_rescaled = None
     best_rescaled_subsets = None  # {subset_name: [train, val, test]}
+    best_restriction_maps = OrderedDict()  # populated when --save_restriction_maps is set
 
     epochs = int(aget(args, "epochs", 200))
     print("Running {} epochs".format(epochs))
@@ -288,6 +290,22 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
             test_loss = float(tmp_test_loss)
             best_epoch = int(epoch)
             bad_counter = 0
+
+            # Snapshot restriction maps at best epoch
+            if bool(aget(args, "save_restriction_maps", False)):
+                try:
+                    best_restriction_maps = OrderedDict()
+                    for i in range(len(model.sheaf_learners)):
+                        L = model.sheaf_learners[i].L
+                        if L is not None:
+                            t = L.detach().cpu()
+                            # Flatten d×d maps to [E, d*d] for 2-D visualization
+                            if t.dim() > 2:
+                                t = t.reshape(t.shape[0], -1)
+                            best_restriction_maps[f"layer_{i}"] = t
+                except Exception as e:
+                    print(f"[warn] could not snapshot restriction maps: {e}")
+
             # Capture rescaled MAE at best-epoch for Tokyo Railway
             if is_tokyo_regression:
                 _norm = str(aget(args, "norm", "global"))
@@ -365,6 +383,22 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     fold_time_s = time.perf_counter() - t_fold_start
     print(f"Fold {fold} wall-clock time: {fold_time_s:.2f}s")
     wandb.log({f"fold{fold}_time_s": float(fold_time_s)})
+
+    # Save restriction maps to disk if requested
+    if bool(aget(args, "save_restriction_maps", False)) and best_restriction_maps:
+        save_dir = aget(args, "save_dir", None)
+        if save_dir is None:
+            save_dir = os.path.join(
+                ROOT_DIR, "checkpoints",
+                str(aget(args, "dataset", "unknown")),
+                f"{aget(args, 'model', 'model')}_seed{aget(args, 'seed', 0)}_fold{fold}",
+            )
+        else:
+            save_dir = os.path.join(save_dir, f"fold{fold}")
+        os.makedirs(save_dir, exist_ok=True)
+        rm_path = os.path.join(save_dir, "restriction_maps.pt")
+        torch.save(best_restriction_maps, rm_path)
+        print(f"Saved restriction maps ({len(best_restriction_maps)} layers) to {rm_path}")
 
     min_acc_threshold = float(aget(args, "min_acc", 0.0))
     # For regression, "test_acc" is negative MAE, so it's always < 0.

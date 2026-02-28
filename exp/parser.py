@@ -166,6 +166,11 @@ def get_parser():
                             help="Enable deterministic flags for better reproducibility.")
     parser.add_argument("--strict_determinism", action="store_true",
                             help="Try strict deterministic algorithms (may warn/error on sparse ops).")
-   
+
+    # ---------- Restriction map saving ----------
+    parser.add_argument("--save_restriction_maps", action="store_true",
+                        help="Save restriction maps from the best epoch to <save_dir>/restriction_maps.pt for visualization.")
+    parser.add_argument("--save_dir", type=str, default=None,
+                        help="Directory to save restriction_maps.pt. Defaults to checkpoints/<dataset>/<model>_seed<seed>.")
 
     return parser

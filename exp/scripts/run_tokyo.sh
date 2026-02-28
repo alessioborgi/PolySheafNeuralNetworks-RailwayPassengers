@@ -30,4 +30,6 @@ python -m exp.run \
     --cuda=0 \
     --entity="${ENTITY}" \
     --wandb_project="Tokyo_Railway" \
+    --save_restriction_maps \
+    --save_dir="../checkpoints/tokyo_railway/DiagSheafPolynomial_seed/fold0" \
     
