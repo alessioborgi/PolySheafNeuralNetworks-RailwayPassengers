@@ -575,6 +575,9 @@ if __name__ == "__main__":
                 normalized_val_losses.append(normalized_val_loss)
                 normalized_test_losses.append(normalized_test_loss)
                 run_times.append(train_time_s)
+                top_10_test_mae = subset_results["top10"][2] if subset_results is not None else None
+                top_100_test_mae = subset_results["top100"][2] if subset_results is not None else None
+                bottom_100_test_mae = subset_results["bottom100"][2] if subset_results is not None else None
             rows.append({
                 "adjacency": adj_type,
                 "mode": mode,
@@ -595,6 +598,9 @@ if __name__ == "__main__":
                 "normalized_test_mae_std": f"{np.std(normalized_test_losses):.4f}",
                 "avg_train_time_s": f"{np.mean(run_times):.2f}",
                 "std_train_time_s": f"{np.std(run_times):.2f}",
+                "top_10_test_mae": f"{top_10_test_mae:.4f}" if top_10_test_mae is not None else "None",
+                "top_100_test_mae": f"{top_100_test_mae:.4f}" if top_100_test_mae is not None else "None",
+                "bottom_100_test_mae": f"{bottom_100_test_mae:.4f}" if bottom_100_test_mae is not None else "None"
             })
             print(f"  {adj_type} avg training time: {np.mean(run_times):.2f}s +/- {np.std(run_times):.2f}s")
         with open(out_path, "w", newline="") as f:
