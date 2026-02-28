@@ -14,6 +14,7 @@ import argparse
 import os
 
 from exp.run import aget
+from utils.node_subsets import build_node_subset_masks
 
 class GCN(nn.Module):
     def __init__(self, in_features, out_features, adjacency_matrix):
@@ -167,30 +168,40 @@ def test_with_masking(model, data, inductive=False):
                 losses.append(loss)
             return losses
 
-def rescaled_test_with_masking(model, data, node_scales, inductive=False):
+def rescaled_test_with_masking(model, data, node_scales, inductive=False, node_subset_mask=None):
     """Compute per-node rescaled MAE: mean(|pred_i - y_i| * scale_i).
-    node_scales: 1-D tensor [N] with per-node (max - min) for undoing normalization."""
+    node_scales: 1-D tensor [N] with per-node (max - min) for undoing normalization.
+    node_subset_mask: optional bool tensor [N]. If provided, losses are averaged
+                      only over nodes where this mask is True.
+    """
     model.eval()
     with torch.no_grad():
         if inductive:
             out = model(data.x[:, data.train_x_mask]).squeeze(-1)
             y = data.y[:, data.train_y_mask].squeeze(-1)
-            train_loss = (torch.abs(out - y) * node_scales).mean().item()
+            errs = torch.abs(out - y) * node_scales
+            train_loss = errs[node_subset_mask].mean().item() if node_subset_mask is not None else errs.mean().item()
 
             out_v = model(data.x[:, data.val_x_mask]).squeeze(-1)
             y_v = data.y[:, data.val_y_mask].squeeze(-1)
-            val_loss = (torch.abs(out_v - y_v) * node_scales).mean().item()
+            errs_v = torch.abs(out_v - y_v) * node_scales
+            val_loss = errs_v[node_subset_mask].mean().item() if node_subset_mask is not None else errs_v.mean().item()
 
             out_t = model(data.x[:, data.test_x_mask]).squeeze(-1)
             y_t = data.y[:, data.test_y_mask].squeeze(-1)
-            test_loss = (torch.abs(out_t - y_t) * node_scales).mean().item()
+            errs_t = torch.abs(out_t - y_t) * node_scales
+            test_loss = errs_t[node_subset_mask].mean().item() if node_subset_mask is not None else errs_t.mean().item()
 
             return train_loss, val_loss, test_loss
         else:
             preds = model(data.x).squeeze(-1)
             losses = []
             for mask in [data.train_mask, data.val_mask, data.test_mask]:
-                loss = (torch.abs(preds[mask] - data.y[mask]) * node_scales[mask]).mean().item()
+                if node_subset_mask is not None:
+                    combined = mask & node_subset_mask
+                else:
+                    combined = mask
+                loss = (torch.abs(preds[combined] - data.y[combined]) * node_scales[combined]).mean().item()
                 losses.append(loss)
             return losses
     
@@ -498,14 +509,27 @@ def main(args):
     # rescale losses back to original scale (undo normalization) for interpretability:
     train_loss, val_loss, test_loss = test_with_masking(model, data, inductive=inductive)
     if norm_mode == "row":
-        original_train_loss, original_val_loss, original_test_loss = rescaled_test_with_masking(
-            model, data, node_row_scales, inductive=inductive)
+        average_p_counts = node_ordered_survey_agg[year_cols].mean(axis=1) * node_row_scales.numpy() + node_row_mins.numpy()
+        average_p_counts = average_p_counts.values  # convert from pandas Series to numpy array
+        subset_masks = build_node_subset_masks(average_p_counts)
+
+        # Compute rescaled MAE for every subset automatically
+        subset_results = {}
+        for subset_name, smask in subset_masks.items():
+            s_train, s_val, s_test = rescaled_test_with_masking(
+                model, data, node_row_scales, inductive=inductive, node_subset_mask=smask)
+            subset_results[subset_name] = (s_train, s_val, s_test)
+            print(f"  [{subset_name}] Train MAE (rescaled): {s_train:.4f}, Val: {s_val:.4f}, Test: {s_test:.4f}")
+
+        # "all" is the default headline metric
+        original_train_loss, original_val_loss, original_test_loss = subset_results["all"]
     else:
         original_train_loss = train_loss * (global_max - global_min)
         original_val_loss = val_loss * (global_max - global_min)
         original_test_loss = test_loss * (global_max - global_min)
+        subset_results = None
     print(f"Final Train Loss (rescaled): {original_train_loss:.10f}, Val Loss (rescaled): {original_val_loss:.10f}, Test Loss (rescaled): {original_test_loss:.10f}")
-    return original_train_loss, original_val_loss, original_test_loss, train_loss, val_loss, test_loss, train_time_s
+    return original_train_loss, original_val_loss, original_test_loss, train_loss, val_loss, test_loss, train_time_s, subset_results
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -543,7 +567,7 @@ if __name__ == "__main__":
                 print(f"Running adjacency type: {adj_type}, seed: {seed}")
                 print(f"{'='*60}")
                 args.adjacency = adj_type
-                train_loss, val_loss, test_loss, normalized_train_loss, normalized_val_loss, normalized_test_loss, train_time_s = main(args)
+                train_loss, val_loss, test_loss, normalized_train_loss, normalized_val_loss, normalized_test_loss, train_time_s, subset_results = main(args)
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
                 test_losses.append(test_loss)

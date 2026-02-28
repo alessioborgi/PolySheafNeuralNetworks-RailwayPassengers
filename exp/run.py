@@ -28,6 +28,7 @@ from models.disc_models import (
 import pandas as pd
 from definitions import ROOT_DIR
 from utils.heterophilic import get_dataset, get_inductive_split, get_synthetic_dataset, get_fixed_splits
+from utils.node_subsets import build_node_subset_masks
 
 # reproducibility utilities (we will use them ONLY in resource_analysis mode)
 from utils.reproducibility import set_reproducible, fold_seed, truthy
@@ -80,12 +81,14 @@ def _apply_tokyo_row_norm(data, global_min, global_max):
     else:
         data.y = (raw_y - node_row_mins.unsqueeze(1)) / node_row_scales.unsqueeze(1)
     data.node_row_scales = node_row_scales
+    data.node_row_mins = node_row_mins
     return data
 
 
 def rescaled_test(model, data, inductive=False, norm_mode="global",
-                  global_scale=1.0, node_row_scales=None):
-    """Compute MAE rescaled back to original passenger count units."""
+                  global_scale=1.0, node_row_scales=None, node_subset_mask=None):
+    """Compute MAE rescaled back to original passenger count units.
+    node_subset_mask: optional bool tensor [N]. If provided, average only over those nodes."""
     model.eval()
     with torch.no_grad():
         if inductive:
@@ -98,9 +101,16 @@ def rescaled_test(model, data, inductive=False, norm_mode="global",
                 y_target = data.y[:, y_mask].squeeze(-1)
                 abs_err = torch.abs(pred - y_target)
                 if norm_mode == "row" and node_row_scales is not None:
-                    mae = (abs_err * node_row_scales).mean().item()
+                    errs = abs_err * node_row_scales
+                    if node_subset_mask is not None:
+                        mae = errs[node_subset_mask].mean().item()
+                    else:
+                        mae = errs.mean().item()
                 else:
-                    mae = abs_err.mean().item() * global_scale
+                    if node_subset_mask is not None:
+                        mae = abs_err[node_subset_mask].mean().item() * global_scale
+                    else:
+                        mae = abs_err.mean().item() * global_scale
                 results.append(mae)
             return results
         else:
@@ -247,6 +257,7 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     # Track rescaled metrics for Tokyo Railway regression
     is_tokyo_regression = (str(aget(args, "task", "classification")) == "regression" and is_tokyo)
     best_rescaled = None
+    best_rescaled_subsets = None  # {subset_name: [train, val, test]}
 
     epochs = int(aget(args, "epochs", 200))
     print("Running {} epochs".format(epochs))
@@ -285,6 +296,24 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
                 best_rescaled = rescaled_test(
                     model, data, inductive=inductive_learning,
                     norm_mode=_norm, global_scale=_gscale, node_row_scales=_nrs)
+                # Compute per-subset rescaled MAE
+                _nrm = getattr(data, "node_row_mins", None)
+                if _norm == "row" and _nrs is not None and _nrm is not None:
+                    # Reconstruct average raw passenger counts to rank stations
+                    N_SURVEY = 6
+                    raw_x = data.x[:, :N_SURVEY].cpu() * _nrs.cpu().unsqueeze(1) + _nrm.cpu().unsqueeze(1)
+                    avg_counts = raw_x.mean(dim=1).numpy()
+                    subset_masks = build_node_subset_masks(avg_counts)
+                    best_rescaled_subsets = {}
+                    for sname, smask in subset_masks.items():
+                        smask_dev = smask.to(aget(args, "device"))
+                        sr = rescaled_test(
+                            model, data, inductive=inductive_learning,
+                            norm_mode=_norm, global_scale=_gscale,
+                            node_row_scales=_nrs, node_subset_mask=smask_dev)
+                        best_rescaled_subsets[sname] = sr
+                else:
+                    best_rescaled_subsets = None
         else:
             bad_counter += 1
 
@@ -325,6 +354,13 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
             f"fold{fold}_rescaled_val_mae": best_rescaled[1],
             f"fold{fold}_rescaled_test_mae": best_rescaled[2],
         })
+    if best_rescaled_subsets is not None:
+        for sname, (s_tr, s_va, s_te) in best_rescaled_subsets.items():
+            wandb.log({
+                f"fold{fold}_rescaled_{sname}_train_mae": s_tr,
+                f"fold{fold}_rescaled_{sname}_val_mae": s_va,
+                f"fold{fold}_rescaled_{sname}_test_mae": s_te,
+            })
 
     fold_time_s = time.perf_counter() - t_fold_start
     print(f"Fold {fold} wall-clock time: {fold_time_s:.2f}s")
