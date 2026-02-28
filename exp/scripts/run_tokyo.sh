@@ -4,7 +4,7 @@
 
 python -m exp.run \
     --dataset=tokyo_railway \
-    --d=7 \
+    --d=3 \
     --layers=2 \
     --hidden_channels=20 \
     --left_weights=True \
@@ -17,7 +17,7 @@ python -m exp.run \
     --model=DiagSheafPolynomial \
     --task=regression \
     --norm=row \
-    --inductive \
+    --learning_mode=inductive \
     --polynomial_type="ChebyshevType1" \
     --normalised=True \
     --deg_normalised=False \

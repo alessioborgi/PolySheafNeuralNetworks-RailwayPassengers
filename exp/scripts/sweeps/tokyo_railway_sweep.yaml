@@ -10,7 +10,7 @@ parameters:
   dataset:
     value: tokyo_railway
   model:
-    value: DiagSheafPolynomial     # Possible values:: [DiagSheaf, BundleSheaf, GeneralSheaf,
+    values: [DiagSheafPolynomial, BundleSheafPolynomial, GeneralSheafPolynomial]     # Possible values:: [DiagSheaf, BundleSheaf, GeneralSheaf,
                                       #                    DiagSheafPolynomial, BundleSheafPolynomial, GeneralSheafPolynomial,
                                       #                    DiagSheafODE, BundleSheafODE, GeneralSheafODE,
                                       #                    DiagSheafODEPolynomial, BundleSheafODEPolynomial, GeneralSheafODEPolynomial]
@@ -27,7 +27,7 @@ parameters:
     # values: ["iterative", "analytic"]
   poly_layers_K:                      # Filter degree
     distribution: categorical
-    values: [2, 3, 4]
+    values: [4]
       
   # gegenbauer_lambda:                  # Must be >0 .
   #   distribution: categorical
@@ -43,19 +43,19 @@ parameters:
   
   d:
     distribution: categorical
-    values: [2, 3]
+    values: [5]
   layers:
     distribution: categorical
-    values: [1, 2, 3, 4]
+    values: [2] # for fair comparison with 2 layer GCN and 2 layer GAT
   hidden_channels:
     distribution: categorical
-    values: [8, 16, 32]
+    values: [32]
   input_dropout:
     distribution: categorical
-    values: [0.0, 0.1]
+    values: [0.0]
   dropout:
     distribution: categorical
-    values: [0.0, 0.1]
+    values: [0.0]
   weight_decay:
     distribution: log_uniform
     min: -9.2
@@ -66,10 +66,10 @@ parameters:
     max: -6.8
   add_lp:
     distribution: categorical
-    values: [1, 0]
+    values: [0]
   add_hp:
     distribution: categorical
-    values: [1, 0]
+    values: [0]
   
   # required by your parser / asserts
   lr:
@@ -93,7 +93,7 @@ parameters:
     value: 200
   folds:
     distribution: constant
-    value: 10
+    value: 3
   epochs:
     distribution: constant
     value: 500
@@ -106,6 +106,10 @@ parameters:
     value: 0 
   task:
     value: "regression"   # Possible values: ["regression", "classification"]
+  learning_mode:
+    values: ["inductive", "transductive"]   # Possible values: ["transductive", "inductive"]
+  norm:
+    values: ["row", "global"]
 
 command:
   - ${env}
