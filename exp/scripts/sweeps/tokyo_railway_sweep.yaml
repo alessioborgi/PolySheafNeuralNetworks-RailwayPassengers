@@ -22,11 +22,13 @@ parameters:
     value: ChebyshevType1             # Possible values: [ChebyshevType1, ChebyshevType2, ChebyshevType3, 
                                       #                    ChebyshevType4, ChebyshevInterpolation, Legendre, Gegenbauer, Jacobi]
   lambda_max_choice:
-    value: analytic   # Possible values: ["iterative", "analytic"]
+    value: "iterative"   # Possible values: ["iterative", "analytic"]
     # distribution: categorical
     # values: ["iterative", "analytic"]
   poly_layers_K:                      # Filter degree
-    values: [2, 3, 4]
+    value: 15
+  chebyshev_layers_K:                 # Backward compat alias
+    value: 15
       
   # gegenbauer_lambda:                  # Must be >0 .
   #   distribution: categorical
@@ -41,25 +43,17 @@ parameters:
   
   
   d:
-    values: [3, 4]
+    values: [3]
   layers:
     values: [2] # for fair comparison with 2 layer GCN and 2 layer GAT
   hidden_channels:
-    values: [8, 16]
+    values: [32]
   input_dropout:
     values: [0.0]
   dropout:
-    values: [0.0]
+    values: [0.7]
   weight_decay:
-    # distribution: log_uniform
-    # min: -9.2
-    # max: -6.8
-    values: [-8.0]
-  sheaf_decay:
-    # distribution: log_uniform
-    # min: -11.0
-    # max: -6.8
-    values: [-9.0]
+    values: [0.005]
   add_lp:
     values: [0]
   add_hp:
@@ -68,6 +62,8 @@ parameters:
   # required by your parser / asserts
   lr:
     value: 0.02
+  maps_lr:
+    value: 0.005
   left_weights:
     value: True
   right_weights:
@@ -101,7 +97,7 @@ parameters:
   task:
     value: "regression"   # Possible values: ["regression", "classification"]
   inductive:
-    values: [False]
+    values: [True, False]
   norm:
     value: "row"
 
