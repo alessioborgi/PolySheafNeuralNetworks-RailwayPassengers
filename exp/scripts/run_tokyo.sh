@@ -6,7 +6,7 @@ python -m exp.run \
     --dataset=tokyo_railway \
     --d=3 \
     --layers=2 \
-    --hidden_channels=20 \
+    --hidden_channels=16 \
     --left_weights=True \
     --right_weights=True \
     --lr=0.02 \
@@ -14,10 +14,10 @@ python -m exp.run \
     --input_dropout=0.0 \
     --dropout=0.7 \
     --use_act=True \
-    --model=DiagSheafPolynomial \
+    --model=GeneralSheafPolynomial \
     --task=regression \
-    --norm=row \
-    --learning_mode=inductive \
+    --norm=global \
+    --inductive=True \
     --polynomial_type="ChebyshevType1" \
     --normalised=True \
     --deg_normalised=False \
@@ -26,10 +26,10 @@ python -m exp.run \
     --chebyshev_layers_K=15 \
     --early_stopping=200 \
     --weight_decay=0.005 \
-    --folds=3 \
+    --folds=2 \
     --cuda=0 \
     --entity="${ENTITY}" \
     --wandb_project="Tokyo_Railway" \
     --save_restriction_maps \
-    --save_dir="../checkpoints/tokyo_railway/DiagSheafPolynomial_seed/fold0" \
+    --save_dir="../checkpoints/tokyo_railway/BundleSheafPolynomial_seed/fold0" \
     

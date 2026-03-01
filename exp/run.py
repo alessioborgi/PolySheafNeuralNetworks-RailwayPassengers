@@ -400,6 +400,14 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
         torch.save(best_restriction_maps, rm_path)
         print(f"Saved restriction maps ({len(best_restriction_maps)} layers) to {rm_path}")
 
+    # Build rescaled metrics dict to return for cross-fold aggregation
+    rescaled_metrics: Dict[str, List[float]] = {}
+    if best_rescaled is not None:
+        rescaled_metrics["all"] = best_rescaled          # [train, val, test]
+    if best_rescaled_subsets is not None:
+        for sname, vals in best_rescaled_subsets.items():
+            rescaled_metrics[sname] = vals                # [train, val, test]
+
     min_acc_threshold = float(aget(args, "min_acc", 0.0))
     # For regression, "test_acc" is negative MAE, so it's always < 0.
     # Skip the min_acc gate entirely for regression tasks.
@@ -407,7 +415,7 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
         keep_running = True
     else:
         keep_running = float(test_acc) >= min_acc_threshold
-    return float(test_acc), float(best_val_acc), keep_running, fold_time_s
+    return float(test_acc), float(best_val_acc), keep_running, fold_time_s, rescaled_metrics
 
 
 # =====================================================================
@@ -752,13 +760,16 @@ if __name__ == "__main__":
     results: List[List[float]] = []
     fold_summaries: List[Dict[str, Any]] = []
     fold_times: List[float] = []
+    all_rescaled: List[Dict[str, List[float]]] = []  # per-fold rescaled metrics
 
     for fold in tqdm(range(int(args.folds))):
         if not resource_analysis:
             print("running with fold:", fold)
-            test_acc, best_val_acc, keep_running, fold_time_s = run_exp_classic(wandb.config, dataset, model_cls, fold)
+            test_acc, best_val_acc, keep_running, fold_time_s, rescaled_metrics = run_exp_classic(wandb.config, dataset, model_cls, fold)
             results.append([test_acc, best_val_acc])
             fold_times.append(fold_time_s)
+            if rescaled_metrics:
+                all_rescaled.append(rescaled_metrics)
             if not keep_running:
                 break
         else:
@@ -774,6 +785,31 @@ if __name__ == "__main__":
 
     wandb_results = {"test_acc": float(test_acc_mean), "val_acc": float(val_acc_mean), "test_acc_std": float(test_acc_std)}
     wandb.log(wandb_results)
+
+    # ---------------- aggregate rescaled MAE across folds ----------------
+    if all_rescaled:
+        # Collect per-subset test MAE values across folds
+        # Each entry in all_rescaled is {subset_name: [train_mae, val_mae, test_mae]}
+        subset_keys = all_rescaled[0].keys()
+        rescaled_agg = {}
+        for sname in subset_keys:
+            test_vals = [rm[sname][2] for rm in all_rescaled if sname in rm]
+            train_vals = [rm[sname][0] for rm in all_rescaled if sname in rm]
+            val_vals = [rm[sname][1] for rm in all_rescaled if sname in rm]
+            if test_vals:
+                rescaled_agg[f"rescaled_{sname}_test_mae_mean"] = float(np.mean(test_vals))
+                rescaled_agg[f"rescaled_{sname}_test_mae_std"] = float(np.std(test_vals))
+                rescaled_agg[f"rescaled_{sname}_train_mae_mean"] = float(np.mean(train_vals))
+                rescaled_agg[f"rescaled_{sname}_val_mae_mean"] = float(np.mean(val_vals))
+        wandb.log(rescaled_agg)
+        for k, v in rescaled_agg.items():
+            wandb.run.summary[k] = v
+        # Print summary
+        for sname in subset_keys:
+            mean_key = f"rescaled_{sname}_test_mae_mean"
+            std_key = f"rescaled_{sname}_test_mae_std"
+            if mean_key in rescaled_agg:
+                print(f"Rescaled test MAE ({sname}): {rescaled_agg[mean_key]:.2f} +/- {rescaled_agg[std_key]:.2f}")
 
     # Log average and std of fold wall-clock times (classic mode)
     if fold_times:
