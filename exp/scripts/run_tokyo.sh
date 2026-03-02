@@ -14,9 +14,9 @@ python -m exp.run \
     --input_dropout=0.0 \
     --dropout=0.7 \
     --use_act=True \
-    --model=GeneralSheafPolynomial \
+    --model=DiagSheafPolynomial \
     --task=regression \
-    --norm=global \
+    --norm=row \
     --inductive=True \
     --polynomial_type="ChebyshevType1" \
     --normalised=True \
@@ -31,5 +31,4 @@ python -m exp.run \
     --entity="${ENTITY}" \
     --wandb_project="Tokyo_Railway" \
     --save_restriction_maps \
-    --save_dir="../checkpoints/tokyo_railway/BundleSheafPolynomial_seed/fold0" \
-    
+    --save_dir="../checkpoints/tokyo_railway/DiagSheafPolynomial_seed/fold0" \

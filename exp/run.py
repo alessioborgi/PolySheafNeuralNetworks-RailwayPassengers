@@ -61,6 +61,132 @@ def normalize_device(dev):
     return torch.device(str(dev))
 
 
+# Module-level storage for sheaf edge weights (avoids wandb.config serialization).
+_SHEAF_EDGE_WEIGHTS: Optional[torch.Tensor] = None
+
+
+# ----------------------------- Tokyo edge-weight helpers ----------
+def _compute_tokyo_edge_weights(edge_index, adjacency_type, sigma=5.0, norm_mode="global"):
+    """Compute per-edge continuous weights for the Tokyo Railway graph.
+
+    Only adjacency types that *include* connectivity are supported so that the
+    graph topology (edge_index) is unchanged.  The returned tensor has shape
+    ``[E]`` (one weight per directed edge in ``edge_index``).
+
+    Supported *adjacency_type* values::
+        'con'        – all ones (no modulation)
+        'd_con'      – distance-kernel * connectivity
+        'cor_con'    – correlation * connectivity
+        'd_cor_con'  – distance-kernel * correlation * connectivity
+    """
+    E = edge_index.size(1)
+
+    if adjacency_type == "con":
+        return torch.ones(E, dtype=torch.float32)
+
+    # ---- Load raw data (same logic as tokyo.py) ----
+    data_dir = os.path.join(ROOT_DIR, "datasets", "tokyo_railway", "raw")
+    connection_pd = pd.read_csv(os.path.join(data_dir, "line_station_connectionV1130.csv"))
+    passenger_survey_pd = pd.read_csv(os.path.join(data_dir, "pass_survey_tokyov1109.csv"))
+    passenger_survey_pd['station_id'] = passenger_survey_pd['station_id'].astype(int)
+
+    sc1 = connection_pd[['station_cd1', 'station_name1']].rename(
+        columns={'station_cd1': 'station_id', 'station_name1': 'S12_001'}).drop_duplicates()
+    sc2 = connection_pd[['station_cd2', 'station_name2']].rename(
+        columns={'station_cd2': 'station_id', 'station_name2': 'S12_001'}).drop_duplicates()
+    station_list = pd.concat([sc1, sc2]).drop_duplicates().reset_index(drop=True)
+
+    matching = passenger_survey_pd[passenger_survey_pd['station_id'].isin(station_list['station_id'].values)]
+    matching = matching.sort_values('station_id').reset_index(drop=True)
+    station_list = station_list[station_list['station_id'].isin(matching['station_id'].values)]
+    station_list = station_list.sort_values('station_id').reset_index(drop=True)
+
+    station_node_pd = connection_pd[
+        connection_pd['station_cd1'].isin(station_list['station_id'].values) &
+        connection_pd['station_cd2'].isin(station_list['station_id'].values)
+    ][['line', 'station_cd1', 'station_cd2', 'distance']].drop_duplicates()
+
+    import networkx as nx
+    G = nx.from_pandas_edgelist(station_node_pd, 'station_cd1', 'station_cd2', edge_attr=True)
+    node_order = list(G.nodes())
+
+    # Reorder matching survey data
+    matching = matching.set_index('station_id').loc[node_order].reset_index(drop=False)
+    year_cols = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+
+    # Normalize survey data (for correlation computation)
+    if norm_mode == "row":
+        row_mins = matching[year_cols].min(axis=1)
+        row_maxs = matching[year_cols].max(axis=1)
+        row_range = (row_maxs - row_mins).replace(0, 1)
+        for year in year_cols:
+            matching[year] = (matching[year] - row_mins) / row_range
+    else:
+        gmin = matching[year_cols].min().min()
+        gmax = matching[year_cols].max().max()
+        for year in year_cols:
+            matching[year] = (matching[year] - gmin) / (gmax - gmin)
+
+    survey_agg = matching.groupby('station_id')[year_cols].mean()
+    node_survey = survey_agg.loc[node_order].copy()
+
+    # ---- Build a node_id → reindexed int map ----
+    # edge_index uses contiguous 0..N-1 ids in the same order as node_order
+    id_to_idx = {nid: i for i, nid in enumerate(node_order)}
+    N = len(node_order)
+
+    # ---- Distance kernel (dense N×N, then we extract per-edge) ----
+    need_dist = adjacency_type in ("d_con", "d_cor_con")
+    dist_dense = None
+    if need_dist:
+        # Get lat/lng
+        node_survey['lat'] = float('nan')
+        node_survey['lng'] = float('nan')
+        for sid in node_order:
+            r1 = connection_pd[connection_pd['station_cd1'] == sid][['station_lat1', 'station_lng1']].head(1)
+            if not r1.empty:
+                node_survey.loc[sid, 'lat'] = r1['station_lat1'].values[0]
+                node_survey.loc[sid, 'lng'] = r1['station_lng1'].values[0]
+            else:
+                r2 = connection_pd[connection_pd['station_cd2'] == sid][['station_lat2', 'station_lng2']].head(1)
+                if not r2.empty:
+                    node_survey.loc[sid, 'lat'] = r2['station_lat2'].values[0]
+                    node_survey.loc[sid, 'lng'] = r2['station_lng2'].values[0]
+
+        R = 3958.8
+        lats = np.radians(node_survey['lat'].values)
+        lngs = np.radians(node_survey['lng'].values)
+        dphi = lats[:, None] - lats[None, :]
+        dlam = lngs[:, None] - lngs[None, :]
+        a = np.sin(dphi / 2)**2 + np.cos(lats[:, None]) * np.cos(lats[None, :]) * np.sin(dlam / 2)**2
+        dist_np = 2 * R * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+        dist_dense = np.exp(-dist_np / (sigma ** 2))  # [N, N]
+
+    # ---- Correlation (dense N×N) ----
+    need_cor = adjacency_type in ("cor_con", "d_cor_con")
+    cor_dense = None
+    if need_cor:
+        data_matrix = node_survey[year_cols].values
+        centered = data_matrix - data_matrix.mean(axis=1, keepdims=True)
+        cov = np.dot(centered, centered.T) / (data_matrix.shape[1] - 1)
+        std = np.sqrt(np.diag(cov))
+        cor_dense = cov / (np.outer(std, std) + 1e-12)
+        cor_dense = np.nan_to_num(cor_dense)
+        np.fill_diagonal(cor_dense, 0.0)
+
+    # ---- Extract per-edge weights from dense matrices ----
+    src = edge_index[0].cpu().numpy()
+    dst = edge_index[1].cpu().numpy()
+    weights = np.ones(E, dtype=np.float32)
+
+    if dist_dense is not None:
+        weights *= dist_dense[src, dst].astype(np.float32)
+    if cor_dense is not None:
+        weights *= cor_dense[src, dst].astype(np.float32)
+
+    return torch.tensor(weights, dtype=torch.float32)
+
+
 # ----------------------------- Tokyo row normalization helpers ----------
 def _apply_tokyo_row_norm(data, global_min, global_max):
     """Undo global normalization baked into data.pt and apply per-station (row) normalization."""
@@ -233,7 +359,12 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
 
     data = data.to(aget(args, "device"))
 
-    model = model_cls(data.edge_index, args).to(aget(args, "device"))
+    # Inject sheaf edge weights into a mutable copy of args so the model
+    # receives the actual tensor (wandb.config would have serialized it).
+    _model_args = dict(args) if not isinstance(args, dict) else args
+    _model_args = dict(_model_args)  # shallow copy
+    _model_args['sheaf_edge_weights'] = _SHEAF_EDGE_WEIGHTS
+    model = model_cls(data.edge_index, _model_args).to(aget(args, "device"))
 
     sheaf_learner_params, other_params = model.grouped_parameters()
     optimizer = torch.optim.Adam([
@@ -460,7 +591,10 @@ def run_exp_resource(args, dataset, model_cls, fold: int) -> Tuple[float, float,
                 pass
 
         # model
-        model = model_cls(data.edge_index, args).to(device)
+        _model_args_r = dict(args) if not isinstance(args, dict) else args
+        _model_args_r = dict(_model_args_r)
+        _model_args_r['sheaf_edge_weights'] = _SHEAF_EDGE_WEIGHTS
+        model = model_cls(data.edge_index, _model_args_r).to(device)
 
         # One-shot MACs proxy
         macs = maybe_profile_macs_torchprofile(model, data.x)
@@ -683,6 +817,21 @@ if __name__ == "__main__":
         args.tokyo_global_min = float(_survey_df[_year_cols].min().min())
         args.tokyo_global_max = float(_survey_df[_year_cols].max().max())
         del _survey_df, _year_cols, _raw_csv
+
+    # ---- Compute per-edge sheaf weights (Tokyo Railway, valued masking) ----
+    # Stored in module-level _SHEAF_EDGE_WEIGHTS (NOT in args) because
+    # wandb.config serializes tensors to strings, which breaks torch.tensor().
+    _sea = getattr(args, "sheaf_edge_adjacency", "con")
+    if aget(args, "dataset") == "tokyo_railway" and _sea != "con":
+        _sigma = float(getattr(args, "sigma", 5.0))
+        _norm = getattr(args, "norm", "global")
+        _SHEAF_EDGE_WEIGHTS = _compute_tokyo_edge_weights(
+            dataset[0].edge_index, _sea, sigma=_sigma, norm_mode=_norm)
+        print(f"Sheaf edge weights ({_sea}): min={_SHEAF_EDGE_WEIGHTS.min():.4f}, "
+              f"max={_SHEAF_EDGE_WEIGHTS.max():.4f}, "
+              f"mean={_SHEAF_EDGE_WEIGHTS.mean():.4f}")
+    else:
+        _SHEAF_EDGE_WEIGHTS = None
 
     # ---------------- Enrich args ----------------
     args.sha = sha
