@@ -1,4 +1,4 @@
-adjacency,mode,norm,seed,sigma,train_mae,val_mae,test_mae,normalized_train_mae,normalized_val_mae,normalized_test_mae,train_mae_std,val_mae_std,test_mae_std,normalized_train_mae_std,normalized_val_mae_std,normalized_test_mae_std
+adjacency,mode,norm,seed,sigma,train_mae,val_mae,test_mae,normalized_train_mae,normalized_val_mae,normalized_test_mae,train_mae_std,val_mae_std,test_mae_std,normalized_train_mae_std,normalized_val_mae_std,normalized_test_mae_std,avg_train_time_s,std_train_time_s,top_10_test_mae,top_100_test_mae,bottom_100_test_mae
 con,inductive,row,2,5.0,2517.4382,3403.4111,3705.8778,0.2059,0.3001,0.3045,47.5409,208.0740,191.1248,0.0085,0.0162,0.0160
 dis,inductive,row,2,5.0,2691.7000,2218.1585,3472.0447,0.2157,0.2382,0.3023,113.8040,436.2640,325.0893,0.0071,0.0252,0.0181
 cor,inductive,row,2,5.0,2131.1135,2102.5299,4330.3687,0.2754,0.2549,0.4508,39.6691,18.8208,263.9994,0.0046,0.0117,0.0246
