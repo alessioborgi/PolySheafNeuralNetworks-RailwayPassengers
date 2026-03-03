@@ -6,7 +6,7 @@ import numpy as np
 
 PROJECT = "Tokyo_Railway"
 ENTITY = "sheaf_hypergraphs"  # set to your wandb username/team, or None to use the default
-SHEAF_EDGE_WEIGHTS = True
+SHEAF_EDGE_WEIGHTS = True # if it was a sheaf-only to run to study the effect of sheaf edge weights
 
 api = wandb.Api()
 path = f"{ENTITY}/{PROJECT}" if ENTITY else PROJECT
