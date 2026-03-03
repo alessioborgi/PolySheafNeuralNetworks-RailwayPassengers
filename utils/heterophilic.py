@@ -8,13 +8,15 @@ import os
 import os.path as osp
 import numpy as np
 import torch
+from torch_geometric import data
 import torch_geometric.transforms as T
 from typing import Optional, Callable, List, Union, Dict, Any
 from torch_geometric.datasets import HeterophilousGraphDataset, WikiCS
 from torch_geometric.data import InMemoryDataset, download_url, Data
-from torch_geometric.utils import remove_self_loops
+from torch_geometric.utils import remove_self_loops, from_networkx
 from torch_geometric.utils.undirected import to_undirected
 from torch_sparse import coalesce
+import pandas as pd
 
 from utils.classic import Planetoid
 from definitions import ROOT_DIR
@@ -78,6 +80,7 @@ def get_fixed_splits(data: Data, dataset_name: str, seed: int) -> Data:
 
     # (1) Built-in k-fold masks on the Data object
     if hasattr(data, "train_mask") and data.train_mask is not None:
+        print("data has train mask therefore we do some random splits")
         if torch.is_tensor(data.train_mask) and data.train_mask.dim() == 2:
             # Masks can be [num_nodes, K] or [K, num_nodes] depending on dataset.
             if data.train_mask.size(0) == data.num_nodes:
@@ -115,12 +118,44 @@ def get_fixed_splits(data: Data, dataset_name: str, seed: int) -> Data:
     os.makedirs(SPLITS_DIR, exist_ok=True)
     split_path = osp.join(SPLITS_DIR, f"{dataset_key}_split_0.6_0.2_{seed}.npz")
 
+    if dataset_key in {"tokyo_railway"}:
+        print("randomized splits successfully")
+        # want to randomize splits
+        n = data.num_nodes
+        rng = np.random.RandomState(seed)
+        perm = rng.permutation(n)
+
+        n_train = int(0.6 * n)
+        n_val   = int(0.2 * n)
+
+        train_idx = perm[:n_train]
+        val_idx   = perm[n_train:n_train + n_val]
+        test_idx  = perm[n_train + n_val:]
+
+        train_mask = np.zeros(n, dtype=bool)
+        val_mask   = np.zeros(n, dtype=bool)
+        test_mask  = np.zeros(n, dtype=bool)
+
+        train_mask[train_idx] = True
+        val_mask[val_idx]     = True
+        test_mask[test_idx]   = True
+
+        data.train_mask = torch.tensor(train_mask, dtype=torch.bool)
+        data.val_mask   = torch.tensor(val_mask, dtype=torch.bool)
+        data.test_mask  = torch.tensor(test_mask, dtype=torch.bool)
+
+        np.savez(split_path, train_mask=train_mask, val_mask=val_mask, test_mask=test_mask)
+        
+        return data
+
     try:
         with np.load(split_path) as f:
+            print(f"Loaded existing split from {split_path}")
             train_mask = f["train_mask"]
             val_mask   = f["val_mask"]
             test_mask  = f["test_mask"]
     except FileNotFoundError:
+        print(f"No existing split found at {split_path}. Creating new random split with seed {seed} and saving it.")
         # Create and save deterministic random split
         n = data.num_nodes
         rng = np.random.RandomState(seed)
@@ -158,6 +193,50 @@ def get_fixed_splits(data: Data, dataset_name: str, seed: int) -> Data:
 
     return data
 
+def get_inductive_split(data: Data, dataset_name: str):
+    dataset_key = _normalize_name(dataset_name)
+    if dataset_key == "tokyo_railway":
+        # For Tokyo Railway, we have pre-defined inductive splits based on time chunks.
+        # Each fold corresponds to a different chunk of time for training/validation/testing.
+        os.makedirs(SPLITS_DIR, exist_ok=True)
+        split_path = osp.join(SPLITS_DIR, f"{dataset_key}_split_inductive.npz")
+        n = data.x.size(1)
+
+        train_x_mask = np.zeros(n, dtype=bool)
+        val_x_mask   = np.zeros(n, dtype=bool)
+        test_x_mask  = np.zeros(n, dtype=bool)
+
+        train_y_mask = np.zeros(3, dtype=bool)
+        val_y_mask   = np.zeros(3, dtype=bool)
+        test_y_mask  = np.zeros(3, dtype=bool)
+
+        train_x_idx = np.concatenate([np.arange(0, 4), np.arange(6, n)])
+        val_x_idx = np.concatenate([np.arange(1, 5), np.arange(6, n)])
+        test_x_idx = np.arange(2, n)
+
+        train_x_mask[train_x_idx] = True
+        val_x_mask[val_x_idx]     = True
+        test_x_mask[test_x_idx]   = True
+
+        train_y_mask[0] = True
+        val_y_mask[1] = True
+        test_y_mask[2] = True
+
+        np.savez(split_path, train_x_mask=train_x_mask, val_x_mask=val_x_mask, test_x_mask=test_x_mask, train_y_mask=train_y_mask, val_y_mask=val_y_mask, test_y_mask=test_y_mask)
+    else:
+        raise ValueError(f"Inductive split not defined for dataset '{dataset_name}'.")
+
+    data.train_x_mask = torch.tensor(train_x_mask, dtype=torch.bool)
+    data.val_x_mask   = torch.tensor(val_x_mask, dtype=torch.bool)
+    data.test_x_mask  = torch.tensor(test_x_mask, dtype=torch.bool)
+    data.train_y_mask = torch.tensor(train_y_mask, dtype=torch.bool)
+    data.val_y_mask   = torch.tensor(val_y_mask, dtype=torch.bool)
+    data.test_y_mask  = torch.tensor(test_y_mask, dtype=torch.bool)
+    print(f"train x mask shape: {data.train_x_mask.shape}, train y mask shape: {data.train_y_mask.shape}")
+    print(f"val x mask shape: {data.val_x_mask.shape}, val y mask shape: {data.val_y_mask.shape}")
+    print(f"test x mask shape: {data.test_x_mask.shape}, test y mask shape: {data.test_y_mask.shape}")
+
+    return data
 
 def _pick_first(keys, container):
     for key in keys:
@@ -547,7 +626,10 @@ def get_dataset(name: str):
             transform=T.NormalizeFeatures(),
         )
         dataset.data = _make_undirected_clean(dataset.data)
-        
+
+    # --- Tokyo Dataset (local files, custom loader) ---
+    elif name_key in {"tokyo_railway"}:
+        dataset = TokyoRailway(root=data_root, name=name_key)
     else:
         raise ValueError(f"dataset {name} not supported in dataloader")
 
@@ -1088,3 +1170,146 @@ class SnapPatents(InMemoryDataset):
             data = self.pre_transform(data)
 
         torch.save(self.collate([data]), self.processed_paths[0])
+
+class TokyoRailway(InMemoryDataset):
+    """
+    Loads the Tokyo Railway dataset from local .pt files. Expects a folder named "tokyo_railway" under datasets/
+    """
+
+    def __init__(self, root: str, name, transform=None, pre_transform=None):
+        self.name = name.lower()
+        super(TokyoRailway, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
+
+    @property
+    def raw_dir(self):
+        return osp.join(self.root, self.name, 'raw')
+
+    @property
+    def processed_dir(self):
+        return osp.join(self.root, self.name, 'processed')
+    
+    @property
+    def raw_file_names(self):
+        return ["line_station_connectionV1130.csv", "pass_survey_tokyov1109.csv"]
+
+    @property
+    def processed_file_names(self):
+        return "data.pt"
+
+    def download(self):
+        # No downloading since we expect local files. Just check existence.
+        for fname in self.raw_file_names:
+            path = osp.join(self.raw_dir, fname)
+            if not osp.exists(path):
+                raise FileNotFoundError(f"Expected file {fname} not found in {self.raw_dir}. Please place it there.")
+
+    def process(self):
+        # Load required tensors
+        connection_pd = pd.read_csv(self.raw_paths[0])
+        connection_pd
+        
+        # get station list from connection_pd (both station_cd1 and station_cd2) to ensure we have all stations
+        station_list_connection_1 = connection_pd[['station_cd1', 'station_name1']].rename(columns={'station_cd1': 'station_id', 'station_name1': 'S12_001'}).drop_duplicates()
+        station_list_connection_2 = connection_pd[['station_cd2', 'station_name2']].rename(columns={'station_cd2': 'station_id', 'station_name2': 'S12_001'}).drop_duplicates()
+        station_list_pd = pd.concat([station_list_connection_1, station_list_connection_2]).drop_duplicates().reset_index(drop=True)
+
+        # list of all the stations in the passenger survey data that are also in the connection data
+        passenger_survey_pd = pd.read_csv(self.raw_paths[1])
+        passenger_survey_pd['station_id'] = passenger_survey_pd['station_id'].astype(int)
+        passenger_survey_pd[passenger_survey_pd['station_id'].isin(station_list_pd['station_id'].values)]
+
+        matching_passenger_survey_pd = passenger_survey_pd[passenger_survey_pd['station_id'].isin(station_list_pd['station_id'].values)].reset_index(drop=True)
+        matching_passenger_survey_pd = matching_passenger_survey_pd.sort_values('station_id').reset_index(drop=True)
+
+        # max-min normalize passenger counts:
+        year_cols = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+
+        # normalization with global values:
+        global_min = matching_passenger_survey_pd[year_cols].min().min()
+        global_max = matching_passenger_survey_pd[year_cols].max().max()
+        for year in year_cols:
+            matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - global_min) / (global_max - global_min)
+
+        # COMMENTED OUT FOR EXPERIMENTATION:
+        # normalization with row values: 
+        # row_mins = matching_passenger_survey_pd[year_cols].min(axis=1)
+        # row_maxs = matching_passenger_survey_pd[year_cols].max(axis=1)
+        # for year in year_cols:
+        #     matching_passenger_survey_pd[year] = (matching_passenger_survey_pd[year] - row_mins) / (row_maxs - row_mins)
+
+        # and now we need to make sure nodes in the passenger survey match up with nodes in the connection data
+        # the passenger_survey_pd only has nodes that are in the station_list_pd, so we can just filter the station_list_pd to only include those nodes
+        # note that both data had stations that were not in the other
+        station_list_pd = station_list_pd[station_list_pd['station_id'].isin(matching_passenger_survey_pd['station_id'].values)].reset_index(drop=True)
+        station_list_pd = station_list_pd.sort_values('station_id').reset_index(drop=True)
+
+        station_node_pd = connection_pd[connection_pd['station_cd1'].isin(station_list_pd['station_id'].values) & connection_pd['station_cd2'].isin(station_list_pd['station_id'].values)][['line', 'station_cd1', 'station_cd2', 'distance']].drop_duplicates()
+
+        # build graph structure using networkx
+        import networkx as nx
+        G = nx.Graph()
+        G = nx.from_pandas_edgelist(station_node_pd, 'station_cd1', 'station_cd2', edge_attr=True)
+        
+        node_order = list(G.nodes())
+        print(f"Number of nodes in G: {len(G.nodes())}")
+        print(f"Number of edges in G: {len(G.edges())}")
+
+        # we need to make sure the station_list_pd is in the same order as the nodes in the graph G, which is the order the adjacency matrix will use
+        station_list_pd = station_list_pd.set_index('station_id').loc[node_order].reset_index(drop=False)
+        station_list_pd
+
+        # and we also need to make sure the passenger survey data is in the same order as the nodes in the graph G, which is the order the adjacency matrix will use
+        matching_passenger_survey_pd = matching_passenger_survey_pd.set_index('station_id').loc[node_order].reset_index(drop=False)
+
+        # get operator form line name
+        station_node_pd['operator'] = station_node_pd['line'].apply(lambda x: x.split('.')[0])
+
+        # Aggregate passenger survey by station_id (handles duplicate rows per station)
+        survey_filtered = matching_passenger_survey_pd[matching_passenger_survey_pd['station_id'].isin(node_order)]
+        #if there are multiple rows in the passenger survey for the same station_id, we take the mean of the passenger counts for that station_id across those rows, so that we have a single row per station_id that matches up with the nodes in the graph G:
+        survey_agg = survey_filtered.groupby('station_id')[['2013','2014','2015','2016','2017','2018','2019']].mean()
+
+
+        #one hot encoding for line and operator
+        all_operators = sorted(station_node_pd['operator'].unique())
+        all_lines = sorted(station_node_pd['line'].unique())
+
+        node_operator_df = pd.DataFrame(0, index=node_order, columns=all_operators)
+        node_line_df = pd.DataFrame(0, index=node_order, columns=all_lines)
+
+        for _, row in station_node_pd.iterrows():
+            for node_col in ['station_cd1', 'station_cd2']:
+                node = row[node_col]
+                if node in node_operator_df.index:
+                    node_operator_df.loc[node, row['operator']] = 1
+                if node in node_line_df.index:
+                    node_line_df.loc[node, row['line']] = 1
+
+        operator_features = torch.tensor(node_operator_df.values, dtype=torch.float)
+        line_features = torch.tensor(node_line_df.values, dtype=torch.float)
+
+        # Reorder features to match graph node ordering
+
+        #Previously, without masking-type learning:
+        # train_x = torch.tensor(survey_agg.loc[node_order][['2013', '2014', '2015', '2016', '2017']].to_numpy(), dtype=torch.float)
+        # train_x = torch.cat([train_x, operator_features, line_features], dim=1)  # Concatenate all features
+        # train_y = torch.tensor(survey_agg.loc[node_order][['2018']].to_numpy(), dtype=torch.float)
+
+        # Now, with masking to suit sheaf learning procedure:
+        x = torch.tensor(survey_agg.loc[node_order][['2013', '2014', '2015', '2016', '2017', '2018']].to_numpy(), dtype=torch.float)
+        x = torch.cat([x, operator_features, line_features], dim=1)  # Concatenate all features
+        y = torch.tensor(survey_agg.loc[node_order][['2017', '2018', '2019']].to_numpy(), dtype=torch.float)
+        data = from_networkx(G)
+        data.x = x
+        data.y = y
+        data = _make_undirected_clean(data)
+        data = data if self.pre_transform is None else self.pre_transform(data)
+        print(f"Final data object: {data}")
+        torch.save(self.collate([data]), self.processed_paths[0])
+
+if __name__ == "__main__":
+    # Example usage:
+    dataset = TokyoRailway(root="datasets", name="tokyo_railway")
+    print(dataset[0])
+    print(dataset[0].x)

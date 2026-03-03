@@ -2,6 +2,7 @@ import sys
 import os
 import random
 import time
+from collections import OrderedDict
 from typing import List, Dict, Any, Tuple, Optional
 
 import torch
@@ -25,7 +26,10 @@ from models.disc_models import (
     DiscreteDiagSheafDiffusion, DiscreteBundleSheafDiffusion, DiscreteGeneralSheafDiffusion,
     DiscreteDiagSheafDiffusionPolynomial, DiscreteBundleSheafDiffusionPolynomial, DiscreteGeneralSheafDiffusionPolynomial
 )
-from utils.heterophilic import get_dataset, get_synthetic_dataset, get_fixed_splits
+import pandas as pd
+from definitions import ROOT_DIR
+from utils.heterophilic import get_dataset, get_inductive_split, get_synthetic_dataset, get_fixed_splits
+from utils.node_subsets import build_node_subset_masks
 
 # reproducibility utilities (we will use them ONLY in resource_analysis mode)
 from utils.reproducibility import set_reproducible, fold_seed, truthy
@@ -57,45 +61,176 @@ def normalize_device(dev):
     return torch.device(str(dev))
 
 
+# ----------------------------- Tokyo row normalization helpers ----------
+def _apply_tokyo_row_norm(data, global_min, global_max):
+    """Undo global normalization baked into data.pt and apply per-station (row) normalization."""
+    N_SURVEY = 6  # first 6 cols of data.x are survey years 2013-2018
+    scale = global_max - global_min
+    raw_x = data.x[:, :N_SURVEY] * scale + global_min
+    raw_y = data.y * scale + global_min
+    if data.y.dim() == 1:
+        all_years = torch.cat([raw_x, raw_y.unsqueeze(1)], dim=1)
+    else:
+        all_years = torch.cat([raw_x, raw_y], dim=1)
+    node_row_mins = all_years.min(dim=1).values
+    node_row_scales = all_years.max(dim=1).values - node_row_mins
+    node_row_scales = torch.where(node_row_scales == 0, torch.ones_like(node_row_scales), node_row_scales)
+    data.x = data.x.clone()
+    data.x[:, :N_SURVEY] = (raw_x - node_row_mins.unsqueeze(1)) / node_row_scales.unsqueeze(1)
+    if data.y.dim() == 1:
+        data.y = (raw_y - node_row_mins) / node_row_scales
+    else:
+        data.y = (raw_y - node_row_mins.unsqueeze(1)) / node_row_scales.unsqueeze(1)
+    data.node_row_scales = node_row_scales
+    data.node_row_mins = node_row_mins
+    return data
+
+
+def rescaled_test(model, data, inductive=False, norm_mode="global",
+                  global_scale=1.0, node_row_scales=None, node_subset_mask=None):
+    """Compute MAE rescaled back to original passenger count units.
+    node_subset_mask: optional bool tensor [N]. If provided, average only over those nodes."""
+    model.eval()
+    with torch.no_grad():
+        if inductive:
+            results = []
+            for x_mask, y_mask in zip(
+                [data.train_x_mask, data.val_x_mask, data.test_x_mask],
+                [data.train_y_mask, data.val_y_mask, data.test_y_mask],
+            ):
+                pred = model(data.x[:, x_mask]).squeeze(-1)
+                y_target = data.y[:, y_mask].squeeze(-1)
+                abs_err = torch.abs(pred - y_target)
+                if norm_mode == "row" and node_row_scales is not None:
+                    errs = abs_err * node_row_scales
+                    if node_subset_mask is not None:
+                        mae = errs[node_subset_mask].mean().item()
+                    else:
+                        mae = errs.mean().item()
+                else:
+                    if node_subset_mask is not None:
+                        mae = abs_err[node_subset_mask].mean().item() * global_scale
+                    else:
+                        mae = abs_err.mean().item() * global_scale
+                results.append(mae)
+            return results
+        else:
+            pred = model(data.x).squeeze(-1)
+            results = []
+            for mask in [data.train_mask, data.val_mask, data.test_mask]:
+                abs_err = torch.abs(pred[mask] - data.y[mask])
+                if norm_mode == "row" and node_row_scales is not None:
+                    mae = (abs_err * node_row_scales[mask]).mean().item()
+                else:
+                    mae = abs_err.mean().item() * global_scale
+                results.append(mae)
+            return results
+
+
 # ----------------------------- train / eval -----------------------------
-def train(model, optimizer, data):
+def train(model, optimizer, data, task="classification", inductive=False):
     model.train()
     optimizer.zero_grad()
-    out = model(data.x)[data.train_mask]
-    loss = F.nll_loss(out, data.y[data.train_mask])
+    if inductive:
+        # Column-mask: select input features, run model, compare against target column
+        x_in = data.x[:, data.train_x_mask]
+        out = model(x_in)
+        y_target = data.y[:, data.train_y_mask].squeeze(-1)
+        if task == "regression":
+            loss = F.l1_loss(out.squeeze(-1), y_target.float())
+        else:
+            loss = F.nll_loss(out, y_target)
+    else:
+        out = model(data.x)[data.train_mask]
+        if task == "regression":
+            loss = F.l1_loss(out.squeeze(-1), data.y[data.train_mask].float())
+        else:
+            loss = F.nll_loss(out, data.y[data.train_mask])
     loss.backward()
     optimizer.step()
     del out
 
 
-def test(model, data):
+def test(model, data, task="classification", inductive=False):
     model.eval()
     with torch.no_grad():
-        logits = model(data.x)
-        accs, losses, preds = [], [], []
-        for _, mask in data("train_mask", "val_mask", "test_mask"):
-            pred = logits[mask].max(1)[1]
-            acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
-            loss = F.nll_loss(logits[mask], data.y[mask])
-            preds.append(pred.detach().cpu())
-            accs.append(acc)
-            losses.append(loss.detach().cpu())
+        if inductive:
+            # Evaluate each temporal split by column-masking x and y
+            accs, losses, preds = [], [], []
+            x_masks = [data.train_x_mask, data.val_x_mask, data.test_x_mask]
+            y_masks = [data.train_y_mask, data.val_y_mask, data.test_y_mask]
+            for x_mask, y_mask in zip(x_masks, y_masks):
+                x_in = data.x[:, x_mask]
+                logits = model(x_in)
+                y_target = data.y[:, y_mask].squeeze(-1)
+                if task == "regression":
+                    pred = logits.squeeze(-1)
+                    mae = F.l1_loss(pred, y_target.float())
+                    acc = -mae.item()
+                    loss = mae
+                else:
+                    pred = logits.max(1)[1]
+                    acc = pred.eq(y_target).sum().item() / y_target.shape[0]
+                    loss = F.nll_loss(logits, y_target)
+                preds.append(pred.detach().cpu())
+                accs.append(acc)
+                losses.append(loss.detach().cpu())
+        else:
+            logits = model(data.x)
+            accs, losses, preds = [], [], []
+            for _, mask in data("train_mask", "val_mask", "test_mask"):
+                if task == "regression":
+                    pred = logits[mask].squeeze(-1)
+                    # Use negative MAE as "acc" so higher is better (consistent with early stopping)
+                    mae = F.l1_loss(pred, data.y[mask].float())
+                    acc = -mae.item()
+                    loss = F.l1_loss(pred, data.y[mask].float())
+                else:
+                    pred = logits[mask].max(1)[1]
+                    acc = pred.eq(data.y[mask]).sum().item() / mask.sum().item()
+                    loss = F.nll_loss(logits[mask], data.y[mask])
+                preds.append(pred.detach().cpu())
+                accs.append(acc)
+                losses.append(loss.detach().cpu())
         return accs, preds, losses
 
 
 # =====================================================================
 #  CLASSIC FOLD RUN (matches your old behavior when resource_analysis=False)
 # =====================================================================
-def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, bool]:
+def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, bool, float]:
     """
     This is intentionally kept as close as possible to your original script:
       - no per-fold reproducibility changes here (relies on global seeding in main)
       - only fold 0 logs per-epoch with step=epoch
       - discrete debug prints identical pattern
       - fold summary logs: best_test_acc/best_val_acc/best_epoch (same keys)
+    Returns (test_acc, best_val_acc, keep_running, fold_time_s).
     """
+    t_fold_start = time.perf_counter()
+    inductive_learning = bool(aget(args, "inductive", False))
     data = dataset[0]
-    data = get_fixed_splits(data, aget(args, "dataset"), fold)
+
+    # Apply Tokyo row normalization if requested
+    is_tokyo = aget(args, "dataset") == "tokyo_railway"
+    if is_tokyo and aget(args, "norm", "global") == "row":
+        data = data.clone()
+        data = _apply_tokyo_row_norm(data, aget(args, "tokyo_global_min"), aget(args, "tokyo_global_max"))
+
+    if inductive_learning:
+        data = get_inductive_split(data, aget(args, "dataset"))
+    else:
+        # For transductive, squeeze multi-column y to 1D (use last column = most recent year)
+        if data.y.dim() > 1:
+            data.y = data.y[:, -1]
+        data = get_fixed_splits(data, aget(args, "dataset"), fold)
+        print("data y shape:", data.y.shape)
+            
+        print(f"data splits for fold {fold}:")
+        print(f"  train: {data.train_mask.sum().item()} samples")
+        print(f"  val: {data.val_mask.sum().item()} samples")
+        print(f"  test: {data.test_mask.sum().item()} samples")
+
     data = data.to(aget(args, "device"))
 
     model = model_cls(data.edge_index, args).to(aget(args, "device"))
@@ -120,13 +255,21 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
     best_epoch = 0
     bad_counter = 0
 
+    # Track rescaled metrics for Tokyo Railway regression
+    is_tokyo_regression = (str(aget(args, "task", "classification")) == "regression" and is_tokyo)
+    best_rescaled = None
+    best_rescaled_subsets = None  # {subset_name: [train, val, test]}
+    best_restriction_maps = OrderedDict()  # populated when --save_restriction_maps is set
+
     epochs = int(aget(args, "epochs", 200))
+    print("Running {} epochs".format(epochs))
     early_stopping = int(aget(args, "early_stopping", 50))
     stop_strategy = str(aget(args, "stop_strategy", "acc"))
 
     for epoch in range(epochs):
-        train(model, optimizer, data)
-        [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data)
+        task = str(aget(args, "task", "classification"))
+        train(model, optimizer, data, task=task, inductive=inductive_learning)
+        [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data, task=task, inductive=inductive_learning)
 
         # EXACTLY AS BEFORE: only fold 0, and with step=epoch
         if fold == 0:
@@ -144,8 +287,51 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
             best_val_acc = float(val_acc)
             best_val_loss = float(val_loss)
             test_acc = float(tmp_test_acc)
+            test_loss = float(tmp_test_loss)
             best_epoch = int(epoch)
             bad_counter = 0
+
+            # Snapshot restriction maps at best epoch
+            if bool(aget(args, "save_restriction_maps", False)):
+                try:
+                    best_restriction_maps = OrderedDict()
+                    for i in range(len(model.sheaf_learners)):
+                        L = model.sheaf_learners[i].L
+                        if L is not None:
+                            t = L.detach().cpu()
+                            # Flatten d×d maps to [E, d*d] for 2-D visualization
+                            if t.dim() > 2:
+                                t = t.reshape(t.shape[0], -1)
+                            best_restriction_maps[f"layer_{i}"] = t
+                except Exception as e:
+                    print(f"[warn] could not snapshot restriction maps: {e}")
+
+            # Capture rescaled MAE at best-epoch for Tokyo Railway
+            if is_tokyo_regression:
+                _norm = str(aget(args, "norm", "global"))
+                _gscale = float(aget(args, "tokyo_global_max") - aget(args, "tokyo_global_min"))
+                _nrs = getattr(data, "node_row_scales", None)
+                best_rescaled = rescaled_test(
+                    model, data, inductive=inductive_learning,
+                    norm_mode=_norm, global_scale=_gscale, node_row_scales=_nrs)
+                # Compute per-subset rescaled MAE
+                _nrm = getattr(data, "node_row_mins", None)
+                if _norm == "row" and _nrs is not None and _nrm is not None:
+                    # Reconstruct average raw passenger counts to rank stations
+                    N_SURVEY = 6
+                    raw_x = data.x[:, :N_SURVEY].cpu() * _nrs.cpu().unsqueeze(1) + _nrm.cpu().unsqueeze(1)
+                    avg_counts = raw_x.mean(dim=1).numpy()
+                    subset_masks = build_node_subset_masks(avg_counts)
+                    best_rescaled_subsets = {}
+                    for sname, smask in subset_masks.items():
+                        smask_dev = smask.to(aget(args, "device"))
+                        sr = rescaled_test(
+                            model, data, inductive=inductive_learning,
+                            norm_mode=_norm, global_scale=_gscale,
+                            node_row_scales=_nrs, node_subset_mask=smask_dev)
+                        best_rescaled_subsets[sname] = sr
+                else:
+                    best_rescaled_subsets = None
         else:
             bad_counter += 1
 
@@ -179,8 +365,57 @@ def run_exp_classic(args, dataset, model_cls, fold: int) -> Tuple[float, float, 
         "best_epoch": int(best_epoch),
     })
 
-    keep_running = float(test_acc) >= float(aget(args, "min_acc", 0.0))
-    return float(test_acc), float(best_val_acc), keep_running
+    # Log rescaled metrics for Tokyo Railway regression
+    if best_rescaled is not None:
+        wandb.log({
+            f"fold{fold}_rescaled_train_mae": best_rescaled[0],
+            f"fold{fold}_rescaled_val_mae": best_rescaled[1],
+            f"fold{fold}_rescaled_test_mae": best_rescaled[2],
+        })
+    if best_rescaled_subsets is not None:
+        for sname, (s_tr, s_va, s_te) in best_rescaled_subsets.items():
+            wandb.log({
+                f"fold{fold}_rescaled_{sname}_train_mae": s_tr,
+                f"fold{fold}_rescaled_{sname}_val_mae": s_va,
+                f"fold{fold}_rescaled_{sname}_test_mae": s_te,
+            })
+
+    fold_time_s = time.perf_counter() - t_fold_start
+    print(f"Fold {fold} wall-clock time: {fold_time_s:.2f}s")
+    wandb.log({f"fold{fold}_time_s": float(fold_time_s)})
+
+    # Save restriction maps to disk if requested
+    if bool(aget(args, "save_restriction_maps", False)) and best_restriction_maps:
+        save_dir = aget(args, "save_dir", None)
+        if save_dir is None:
+            save_dir = os.path.join(
+                ROOT_DIR, "checkpoints",
+                str(aget(args, "dataset", "unknown")),
+                f"{aget(args, 'model', 'model')}_seed{aget(args, 'seed', 0)}_fold{fold}",
+            )
+        else:
+            save_dir = os.path.join(save_dir, f"fold{fold}")
+        os.makedirs(save_dir, exist_ok=True)
+        rm_path = os.path.join(save_dir, "restriction_maps.pt")
+        torch.save(best_restriction_maps, rm_path)
+        print(f"Saved restriction maps ({len(best_restriction_maps)} layers) to {rm_path}")
+
+    # Build rescaled metrics dict to return for cross-fold aggregation
+    rescaled_metrics: Dict[str, List[float]] = {}
+    if best_rescaled is not None:
+        rescaled_metrics["all"] = best_rescaled          # [train, val, test]
+    if best_rescaled_subsets is not None:
+        for sname, vals in best_rescaled_subsets.items():
+            rescaled_metrics[sname] = vals                # [train, val, test]
+
+    min_acc_threshold = float(aget(args, "min_acc", 0.0))
+    # For regression, "test_acc" is negative MAE, so it's always < 0.
+    # Skip the min_acc gate entirely for regression tasks.
+    if str(aget(args, "task", "classification")) == "regression":
+        keep_running = True
+    else:
+        keep_running = float(test_acc) >= min_acc_threshold
+    return float(test_acc), float(best_val_acc), keep_running, fold_time_s, rescaled_metrics
 
 
 # =====================================================================
@@ -279,6 +514,7 @@ def run_exp_resource(args, dataset, model_cls, fold: int) -> Tuple[float, float,
             global_step = fold_step_base + int(epoch)
 
             do_profile_now = profile_flops and (epoch < flops_profile_epochs)
+            task = str(aget(args, "task", "classification"))
             flops, step_time_s = train_step_with_optional_flops(
                 enabled=profile_flops,
                 device=device,
@@ -287,12 +523,14 @@ def run_exp_resource(args, dataset, model_cls, fold: int) -> Tuple[float, float,
                 model=model,
                 optimizer=optimizer,
                 data=data,
+                task=task,
             )
             step_times.append(float(step_time_s))
             if flops is not None:
                 flops_samples.append(float(flops))
 
-            [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data)
+            task = str(aget(args, "task", "classification"))
+            [train_acc, val_acc, tmp_test_acc], preds, [train_loss, val_loss, tmp_test_loss] = test(model, data, task=task)
 
             # Per-epoch curves only for fold 0
             if fold == 0:
@@ -436,14 +674,36 @@ if __name__ == "__main__":
     if args.evectors > 0:
         dataset = append_top_k_evectors(dataset, args.evectors)
 
+    # ---- Tokyo Railway normalization stats ----
+    if aget(args, "dataset") == "tokyo_railway":
+        _raw_csv = os.path.join(ROOT_DIR, "datasets", "tokyo_railway", "raw",
+                                "pass_survey_tokyov1109.csv")
+        _survey_df = pd.read_csv(_raw_csv)
+        _year_cols = ['2013', '2014', '2015', '2016', '2017', '2018', '2019']
+        args.tokyo_global_min = float(_survey_df[_year_cols].min().min())
+        args.tokyo_global_max = float(_survey_df[_year_cols].max().max())
+        del _survey_df, _year_cols, _raw_csv
+
     # ---------------- Enrich args ----------------
     args.sha = sha
     args.graph_size = dataset[0].x.size(0)
-    args.input_dim = dataset[0].x.shape[1]
-    try:
-        args.output_dim = dataset.num_classes
-    except Exception:
-        args.output_dim = torch.unique(dataset[0].y).shape[0]
+    if aget(args, "inductive", False):
+        args.input_dim = get_inductive_split(dataset[0], aget(args, "dataset")).train_x_mask.sum().item()
+    else:
+        args.input_dim = dataset[0].x.shape[1]
+    if args.task == "regression":
+        # For regression, output_dim = number of target columns (typically 1)
+
+        # this is a bit hacky, specifically for the tokyo dataset, since inductive learning isn't built in by default, we use this workaround
+        if aget(args, "dataset") == "tokyo_railway": # 
+            args.output_dim = 1
+        else:
+            args.output_dim = 1 if dataset[0].y.dim() == 1 else dataset[0].y.shape[1]
+    else:
+        try:
+            args.output_dim = dataset.num_classes
+        except Exception:
+            args.output_dim = torch.unique(dataset[0].y).shape[0]
     args.device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu")
 
     assert args.normalised or args.deg_normalised
@@ -499,11 +759,17 @@ if __name__ == "__main__":
 
     results: List[List[float]] = []
     fold_summaries: List[Dict[str, Any]] = []
+    fold_times: List[float] = []
+    all_rescaled: List[Dict[str, List[float]]] = []  # per-fold rescaled metrics
 
     for fold in tqdm(range(int(args.folds))):
         if not resource_analysis:
-            test_acc, best_val_acc, keep_running = run_exp_classic(wandb.config, dataset, model_cls, fold)
+            print("running with fold:", fold)
+            test_acc, best_val_acc, keep_running, fold_time_s, rescaled_metrics = run_exp_classic(wandb.config, dataset, model_cls, fold)
             results.append([test_acc, best_val_acc])
+            fold_times.append(fold_time_s)
+            if rescaled_metrics:
+                all_rescaled.append(rescaled_metrics)
             if not keep_running:
                 break
         else:
@@ -519,6 +785,40 @@ if __name__ == "__main__":
 
     wandb_results = {"test_acc": float(test_acc_mean), "val_acc": float(val_acc_mean), "test_acc_std": float(test_acc_std)}
     wandb.log(wandb_results)
+
+    # ---------------- aggregate rescaled MAE across folds ----------------
+    if all_rescaled:
+        # Collect per-subset test MAE values across folds
+        # Each entry in all_rescaled is {subset_name: [train_mae, val_mae, test_mae]}
+        subset_keys = all_rescaled[0].keys()
+        rescaled_agg = {}
+        for sname in subset_keys:
+            test_vals = [rm[sname][2] for rm in all_rescaled if sname in rm]
+            train_vals = [rm[sname][0] for rm in all_rescaled if sname in rm]
+            val_vals = [rm[sname][1] for rm in all_rescaled if sname in rm]
+            if test_vals:
+                rescaled_agg[f"rescaled_{sname}_test_mae_mean"] = float(np.mean(test_vals))
+                rescaled_agg[f"rescaled_{sname}_test_mae_std"] = float(np.std(test_vals))
+                rescaled_agg[f"rescaled_{sname}_train_mae_mean"] = float(np.mean(train_vals))
+                rescaled_agg[f"rescaled_{sname}_val_mae_mean"] = float(np.mean(val_vals))
+        wandb.log(rescaled_agg)
+        for k, v in rescaled_agg.items():
+            wandb.run.summary[k] = v
+        # Print summary
+        for sname in subset_keys:
+            mean_key = f"rescaled_{sname}_test_mae_mean"
+            std_key = f"rescaled_{sname}_test_mae_std"
+            if mean_key in rescaled_agg:
+                print(f"Rescaled test MAE ({sname}): {rescaled_agg[mean_key]:.2f} +/- {rescaled_agg[std_key]:.2f}")
+
+    # Log average and std of fold wall-clock times (classic mode)
+    if fold_times:
+        avg_fold_time = float(np.mean(fold_times))
+        std_fold_time = float(np.std(fold_times))
+        wandb.log({"avg_fold_time_s": avg_fold_time, "std_fold_time_s": std_fold_time})
+        wandb.run.summary["avg_fold_time_s"] = avg_fold_time
+        wandb.run.summary["std_fold_time_s"] = std_fold_time
+        print(f"Fold time: {avg_fold_time:.2f}s +/- {std_fold_time:.2f}s")
 
     # In resource mode, also log cross-fold FLOPs/time aggregates (extra keys)
     if resource_analysis:

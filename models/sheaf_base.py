@@ -52,6 +52,9 @@ class SheafDiffusion(nn.Module):
         self.hidden_channels = args['hidden_channels']
         self.output_dim = args['output_dim']
 
+        # Task type: 'classification' or 'regression'.
+        self.task = args.get('task', 'classification')
+
         # ODE options (for continuous variants).
         self.t = args.get('max_t', 1.0)
         self.time_range = torch.tensor([0.0, self.t], device=self.device)

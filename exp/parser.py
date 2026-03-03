@@ -75,8 +75,16 @@ def get_parser():
         'DiagSheafODEPolynomial', 'BundleSheafODEPolynomial', 'GeneralSheafODEPolynomial'
     ], default=None)
     parser.add_argument('--entity', type=str, default=None)
+    parser.add_argument('--wandb_project', type=str, default=None,
+                        help="W&B project name. Defaults to an internal name if not set.")
+    parser.add_argument('--task', type=str, choices=['classification', 'regression'], default='classification',
+                        help="Task type: 'classification' (nll_loss + accuracy) or 'regression' (mse_loss + MAE).")
+    parser.add_argument('--inductive', type=str2bool, default=False,
+                        help="Whether to use inductive splits (if supported by dataset, e.g. TokyoRailway).")
     parser.add_argument('--evectors', type=int, default=0,
                         help="Number of Laplacian PE eigenvectors to use.")
+    parser.add_argument('--norm', type=str, default='global', choices=['global', 'row'],
+                        help="Normalization mode for Tokyo Railway: 'global' (single min/max) or 'row' (per-station min/max)")
 
     # ---------- Polynomial filter args (generalized) ----------
     parser.add_argument("--lambda_max_choice", choices=["analytic", "iterative"], default="analytic",
@@ -158,6 +166,11 @@ def get_parser():
                             help="Enable deterministic flags for better reproducibility.")
     parser.add_argument("--strict_determinism", action="store_true",
                             help="Try strict deterministic algorithms (may warn/error on sparse ops).")
-   
+
+    # ---------- Restriction map saving ----------
+    parser.add_argument("--save_restriction_maps", action="store_true",
+                        help="Save restriction maps from the best epoch to <save_dir>/restriction_maps.pt for visualization.")
+    parser.add_argument("--save_dir", type=str, default=None,
+                        help="Directory to save restriction_maps.pt. Defaults to checkpoints/<dataset>/<model>_seed<seed>.")
 
     return parser
