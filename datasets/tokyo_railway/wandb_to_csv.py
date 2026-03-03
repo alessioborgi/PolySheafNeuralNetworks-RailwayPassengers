@@ -4,7 +4,7 @@ import wandb
 import pandas as pd
 import numpy as np
 
-PROJECT = "Tokyo_Railway"
+PROJECT = "Tokyo_Railway" # select your project
 ENTITY = "sheaf_hypergraphs"  # set to your wandb username/team, or None to use the default
 
 api = wandb.Api()
