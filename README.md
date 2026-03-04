@@ -1,6 +1,6 @@
 <div align="center">
 
-# <b>Passenger Count Predictions on the Tokyo Railway Network by Deniz Alkan
+# <b> [L65] Passenger Count Predictions on the Tokyo Railway Network
 
 [Deniz Alkan]
 
