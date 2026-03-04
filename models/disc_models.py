@@ -605,6 +605,9 @@ class DiscreteDiagSheafDiffusionPolynomial(PolynomialSheafDiffusion):
                 maps = (learner(xm, self.edge_index, maps)
                         if isinstance(learner, RotationInvariantSheafLearner)
                         else learner(xm, self.edge_index))
+                # ---- Valued masking: scale learned maps by external edge weights ----
+                if self.sheaf_edge_weights is not None:
+                    maps = maps * self.sheaf_edge_weights.unsqueeze(-1)
                 L, trans_maps = self.laplacian_builder(maps)
                 self.sheaf_learners[layer].set_L(trans_maps)
                 idx, vals = L

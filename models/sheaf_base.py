@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 
@@ -77,6 +78,17 @@ class SheafDiffusion(nn.Module):
 
         # No rotation-invariant path: just use plain dropout for sheaf learners.
         self.sheaf_dropout = self.dropout
+
+        # ---- Per-edge external weights (valued masking, e.g. distance/correlation) ----
+        # Shape [E] matching edge_index.  None means "all ones" (no modulation).
+        _ew = args.get('sheaf_edge_weights', None)
+        if _ew is not None and isinstance(_ew, torch.Tensor):
+            self.register_buffer('sheaf_edge_weights', _ew.float())
+        elif _ew is not None and isinstance(_ew, (list, np.ndarray)):
+            self.register_buffer('sheaf_edge_weights', torch.tensor(_ew, dtype=torch.float32))
+        else:
+            # None, or wandb serialized it to a string — treat as disabled
+            self.sheaf_edge_weights = None
 
         # ---- Hidden “flattened fiber” dimension ------------------------------------------------
         # If no explicit dim_list is provided, default to [final_d, hidden_channels].

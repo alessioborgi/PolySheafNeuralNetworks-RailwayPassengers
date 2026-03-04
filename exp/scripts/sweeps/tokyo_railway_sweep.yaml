@@ -10,7 +10,7 @@ parameters:
   dataset:
     value: tokyo_railway
   model:
-    values: [DiagSheafPolynomial, BundleSheafPolynomial, GeneralSheafPolynomial]     # Possible values:: [DiagSheaf, BundleSheaf, GeneralSheaf,
+    values: [DiagSheafPolynomial]     # Possible values:: [DiagSheaf, BundleSheaf, GeneralSheaf,
                                       #                    DiagSheafPolynomial, BundleSheafPolynomial, GeneralSheafPolynomial,
                                       #                    DiagSheafODE, BundleSheafODE, GeneralSheafODE,
                                       #                    DiagSheafODEPolynomial, BundleSheafODEPolynomial, GeneralSheafODEPolynomial]
@@ -100,6 +100,8 @@ parameters:
     values: [True, False]
   norm:
     value: "row"
+  sheaf_edge_adjacency:
+    values: ["con", "d_con", "cor_con", "d_cor_con"]   # Possible values: ["con", "cor_con", "d_con", "d_cor_con"]
 
 command:
   - ${env}

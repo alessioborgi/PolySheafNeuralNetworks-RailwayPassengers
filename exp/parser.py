@@ -85,6 +85,14 @@ def get_parser():
                         help="Number of Laplacian PE eigenvectors to use.")
     parser.add_argument('--norm', type=str, default='global', choices=['global', 'row'],
                         help="Normalization mode for Tokyo Railway: 'global' (single min/max) or 'row' (per-station min/max)")
+    parser.add_argument('--sheaf_edge_adjacency', type=str, default='con',
+                        choices=['con', 'd_con', 'cor_con', 'd_cor_con'],
+                        help="Edge-weight scheme for sheaf models (Tokyo Railway only). "
+                             "'con' = unweighted (all 1s), 'd_con' = distance * connectivity, "
+                             "'cor_con' = correlation * connectivity, "
+                             "'d_cor_con' = distance * correlation * connectivity.")
+    parser.add_argument('--sigma', type=float, default=5.0,
+                        help="Sigma parameter for distance-based Gaussian kernel exp(-d/sigma^2).")
 
     # ---------- Polynomial filter args (generalized) ----------
     parser.add_argument("--lambda_max_choice", choices=["analytic", "iterative"], default="analytic",
