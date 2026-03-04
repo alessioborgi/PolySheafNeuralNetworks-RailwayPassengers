@@ -4,6 +4,8 @@
 
 [Deniz Alkan]
 
+This repository extends:
+
 # <b>Polynomial Neural Sheaf Diffusion: A Spectral Polynomial Diffusion Approach on Cellular Sheaves
 
 
