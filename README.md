@@ -84,6 +84,7 @@ This optimisation allows to reach new **state-of-the-art accuracy performances**
 
 ## 1. Highlights
 
+- **Passenger Count Predictions**: For the baselines, run `tokyo.py`. For the sheaf extensions, run `run_tokyo.sh`. Instructions for specific details of running shell scripts and sweeps are provided in subsequent sections.
 - **Polynomial Spectral Filters**: Chebyshev Types I–IV, Legendre, Gegenbauer, Jacobi.
 - **Discrete & ODE (Continuous-time)** versions of Sheaf Diffusion.
 - **Three Sheaf-map Regimes**: Diagonal, Bundle, General.
