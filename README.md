@@ -1,8 +1,12 @@
 <div align="center">
 
+# <b>Passenger Count Predictions on the Tokyo Railway Network by Deniz Alkan
+
+[Deniz Alkan]
+
 # <b>Polynomial Neural Sheaf Diffusion: A Spectral Polynomial Diffusion Approach on Cellular Sheaves
 
-# <b>Passenger Count Predictions on the Tokyo Railway Network by Deniz Alkan
+
 
 [Alessio Borgi](https://scholar.google.com/citations?hl=it&user=Ds4ktdkAAAAJ)<sup>*,</sup><sup>1,</sup><sup>2</sup>, [Fabrizio Silvestri](https://scholar.google.com/citations?user=pi985dQAAAAJ&hl=it&oi=ao)<sup>1</sup>, [Pietro Liò](https://scholar.google.com/citations?user=4YhNJBEAAAAJ&hl=it&oi=ao)<sup>2</sup>
 
