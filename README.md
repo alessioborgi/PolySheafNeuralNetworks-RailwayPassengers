@@ -1,6 +1,6 @@
 <div align="center">
 
-# <b> [L65] Passenger Count Predictions on the Tokyo Railway Network
+# <b> [L65] Sheaf Neural Networks for Passenger Count Prediction on the Tokyo Railway Network
 
 [Deniz Alkan]
 
